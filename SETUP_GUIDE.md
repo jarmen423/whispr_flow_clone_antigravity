@@ -256,61 +256,281 @@ You need to grant permissions:
 
 ## Setting Up Local Mode (Advanced)
 
-Local mode processes everything on your computer - no cloud services needed!
+Local mode processes everything on your computer - no cloud services needed! This is great because:
+- **It's free** - no API costs
+- **It's private** - your voice never leaves your machine
+- **It works offline** - no internet required after setup
 
 ### What You Need:
-1. **Ollama** - Runs AI models locally
-2. **Whisper.cpp** - Speech-to-text on your machine
+1. **Ollama** - Runs AI language models locally (for text refinement)
+2. **Whisper.cpp** - Speech-to-text on your machine (for transcription)
 
-### Automatic Setup:
+### Automatic Setup (Recommended):
 
-Run the setup script:
+Run the setup script (Linux/macOS only):
 ```bash
 ./scripts/setup-local.sh
 ```
 
-This will:
+This will automatically:
 - Install Ollama
-- Download a language model
-- Build Whisper.cpp
-- Download a speech model
+- Download the `llama3.2:1b` language model
+- Build Whisper.cpp from source
+- Download the `small` Whisper model
 - Configure your `.env` file
 
-### Manual Setup:
+---
 
-#### Install Ollama:
+### Manual Setup
+
+If the script doesn't work or you're on Windows, follow these steps:
+
+---
+
+## Step 1: Install Ollama (Text Refinement)
+
+Ollama runs large language models locally. We use it to clean up transcribed text.
+
+### Download & Install Ollama:
+
+**macOS:**
 ```bash
-# macOS
+# Option 1: Homebrew (recommended)
 brew install ollama
 
-# Linux
+# Option 2: Direct download
+# Go to https://ollama.ai/download and download the macOS installer
+```
+
+**Linux:**
+```bash
 curl -fsSL https://ollama.ai/install.sh | sh
 ```
 
-Start Ollama and download a model:
+**Windows:**
+1. Go to [https://ollama.ai/download](https://ollama.ai/download)
+2. Download the Windows installer
+3. Run the installer and follow the prompts
+
+### Start Ollama:
+
+After installation, start the Ollama service:
+
 ```bash
-ollama serve  # In one terminal
-ollama pull llama3.2:1b  # In another terminal
+ollama serve
 ```
 
-#### Install Whisper.cpp:
+Keep this terminal open! Ollama needs to be running for local mode to work.
+
+### Download a Language Model:
+
+Open a **new terminal** and download a model:
+
 ```bash
+# Recommended: Small and fast (1.3GB download)
+ollama pull llama3.2:1b
+
+# Alternative: Better quality, slower (2GB download)
+ollama pull llama3.2:3b
+
+# Alternative: Best quality, requires good hardware (4GB download)
+ollama pull llama3.2:7b
+```
+
+**Which model should I choose?**
+| Model | Size | Speed | Quality | RAM Needed |
+|-------|------|-------|---------|------------|
+| `llama3.2:1b` | 1.3GB | Fast | Good | 4GB |
+| `llama3.2:3b` | 2GB | Medium | Better | 8GB |
+| `llama3.2:7b` | 4GB | Slow | Best | 16GB |
+
+Start with `llama3.2:1b` - you can always switch later!
+
+### Verify Ollama Works:
+
+```bash
+ollama run llama3.2:1b "Hello, how are you?"
+```
+
+You should see a response. Press Ctrl+D to exit.
+
+---
+
+## Step 2: Install Whisper.cpp (Speech-to-Text)
+
+Whisper.cpp is a fast, local speech recognition engine.
+
+### Option A: Download Pre-built Binary (Easiest)
+
+**macOS (Apple Silicon M1/M2/M3):**
+```bash
+# Download the latest release
+curl -L -o whisper.zip https://github.com/ggerganov/whisper.cpp/releases/download/v1.5.4/whisper-blas-bin-x64.zip
+
+# Or visit: https://github.com/ggerganov/whisper.cpp/releases
+# Download: whisper-blas-bin-x64.zip (for Intel) or build from source for M1/M2
+```
+
+**Windows:**
+1. Go to [https://github.com/ggerganov/whisper.cpp/releases](https://github.com/ggerganov/whisper.cpp/releases)
+2. Download `whisper-bin-x64.zip` (for 64-bit Windows)
+3. Extract the ZIP file
+4. The `main.exe` file is your whisper binary
+
+**Linux:**
+Pre-built binaries are limited on Linux. Build from source (see Option B).
+
+### Option B: Build from Source (All Platforms)
+
+This gives you the best performance for your specific hardware.
+
+```bash
+# Clone the repository
 git clone https://github.com/ggerganov/whisper.cpp.git
 cd whisper.cpp
+
+# Build (Linux/macOS)
 make
+
+# The binary will be at: ./main
+```
+
+**Windows (with Visual Studio):**
+```powershell
+git clone https://github.com/ggerganov/whisper.cpp.git
+cd whisper.cpp
+cmake -B build
+cmake --build build --config Release
+
+# The binary will be at: build\bin\Release\main.exe
+```
+
+### Download a Whisper Model:
+
+Whisper needs a model file to work. Download one:
+
+**Using the built-in script (Linux/macOS):**
+```bash
+cd whisper.cpp
 ./models/download-ggml-model.sh small
 ```
 
-#### Configure Environment:
+**Manual download (All platforms):**
 
-Edit your `.env` file:
+Download from HuggingFace:
+- **Tiny** (75MB, fastest, least accurate): 
+  [ggml-tiny.bin](https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin)
+- **Small** (466MB, recommended balance):
+  [ggml-small.bin](https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin)
+- **Medium** (1.5GB, more accurate, slower):
+  [ggml-medium.bin](https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin)
+
+Or use quantized models (smaller, nearly same quality):
+- **Small Q5** (190MB, recommended):
+  [ggml-small-q5_1.bin](https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin)
+
+**Which model should I choose?**
+| Model | Size | Speed | Accuracy | Best For |
+|-------|------|-------|----------|----------|
+| `tiny` | 75MB | Very Fast | Basic | Quick tests |
+| `small` | 466MB | Fast | Good | **Daily use (recommended)** |
+| `small-q5_1` | 190MB | Fast | Good | Daily use, less disk space |
+| `medium` | 1.5GB | Medium | Great | Important recordings |
+| `large` | 3GB | Slow | Best | When accuracy is critical |
+
+Save the model file to the `models/` folder in your LocalFlow project:
 ```bash
+mkdir -p models
+mv ~/Downloads/ggml-small-q5_1.bin ./models/
+```
+
+### Verify Whisper Works:
+
+Test with a sample audio file:
+```bash
+# Create a test (record yourself or use any .wav file)
+./whisper.cpp/main -m models/ggml-small-q5_1.bin -f test.wav
+```
+
+---
+
+## Step 3: Configure LocalFlow for Local Mode
+
+Now let's tell LocalFlow where to find everything.
+
+### Edit your `.env` file:
+
+```bash
+# Copy the example if you haven't already
+cp .env.example .env
+
+# Edit with your favorite editor
+nano .env   # or: code .env (VS Code)
+```
+
+### Update these values:
+
+```bash
+# Switch to local processing
 PROCESSING_MODE=local
-WHISPER_PATH=/path/to/whisper.cpp/main
+
+# Path to your whisper binary
+# Linux/macOS (if you built from source):
+WHISPER_PATH=/home/yourname/whisper.cpp/main
+# macOS (if you downloaded a binary):
+WHISPER_PATH=/usr/local/bin/whisper
+# Windows:
+WHISPER_PATH=C:\path\to\whisper.cpp\build\bin\Release\main.exe
+
+# Path to your whisper model
 WHISPER_MODEL_PATH=./models/ggml-small-q5_1.bin
+
+# Ollama settings (usually no changes needed)
 OLLAMA_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.2:1b
 ```
+
+---
+
+## Step 4: Test Local Mode
+
+1. **Make sure Ollama is running:**
+   ```bash
+   ollama serve
+   ```
+
+2. **Start LocalFlow:**
+   ```bash
+   bun run dev:all
+   ```
+
+3. **Open the web UI:** [http://localhost:3000](http://localhost:3000)
+
+4. **In Settings (gear icon), select "Local Mode"**
+
+5. **Record something and verify it works!**
+
+### Troubleshooting Local Mode:
+
+**"Whisper binary not found"**
+- Check that `WHISPER_PATH` in `.env` points to the actual binary
+- On Windows, make sure to use `\` or `\\` in paths
+
+**"Whisper model not found"**
+- Check that `WHISPER_MODEL_PATH` points to your `.bin` file
+- Make sure you downloaded the model file
+
+**"Ollama not responding"**
+- Make sure `ollama serve` is running in a terminal
+- Try: `curl http://localhost:11434/api/tags` - should return JSON
+
+**"Model not found" (Ollama)**
+- Run: `ollama pull llama3.2:1b` to download the model
+
+**Processing is slow**
+- Try a smaller Whisper model (`tiny` instead of `small`)
+- Try a smaller Ollama model (`llama3.2:1b` instead of `3b`)
+- Close other applications to free up RAM
 
 ---
 
