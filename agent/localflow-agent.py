@@ -216,12 +216,16 @@ class PasteHandler:
             time.sleep(CONFIG.paste_cooldown)
 
         try:
+            # Set flag to prevent keyboard listener interference
+            if self.agent:
+                self.agent.pasting_in_progress = True
+
             # Copy to clipboard
             pyperclip.copy(text)
             log_debug(f"Copied to clipboard: {text[:50]}...")
 
-            # Small delay to ensure clipboard is ready
-            time.sleep(0.05)
+            # Longer delay for clipboard to be ready
+            time.sleep(0.2)
 
             # Simulate Ctrl+V (or Cmd+V on macOS)
             if sys.platform == "darwin":
@@ -229,13 +233,20 @@ class PasteHandler:
             else:
                 pyautogui.hotkey("ctrl", "v")
 
-            self.last_paste_time = time.time()
+            # Additional delay to let paste complete
+            time.sleep(0.1)
+
+            self.last_paste_time = now.time()
             log_info("Text pasted successfully")
             return True
 
         except Exception as e:
             log_error(f"Failed to paste: {e}")
             return False
+        finally:
+            # Clear flag after paste attempt
+            if self.agent:
+                self.agent.pasting_in_progress = False
 
 
 # ============================================
