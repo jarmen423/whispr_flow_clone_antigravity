@@ -295,11 +295,13 @@ class LocalFlowAgent:
                 processing_time = data.get("processingTime", 0)
 
                 log_info(f"Received result: {word_count} words, {processing_time}ms")
-                log_debug(f"Text: {refined_text[:100]}...")
+                log_info(f"Text to paste: '{refined_text}'")
 
                 # Paste the refined text
                 if refined_text:
                     self.paste_handler.paste_text(refined_text)
+                else:
+                    log_warning("Refined text is empty, skipping paste")
             else:
                 error = data.get("error", "Unknown error")
                 log_error(f"Dictation failed: {error}")
