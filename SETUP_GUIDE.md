@@ -122,7 +122,7 @@ bun run dev:all
 
 ### Step 5: Open the Web UI
 
-Go to [http://localhost:3000](http://localhost:3000) in your browser.
+Go to [http://localhost:3005](http://localhost:3005) in your browser.
 
 You should see the LocalFlow interface with a big microphone button!
 
@@ -181,7 +181,7 @@ ZAI_API_KEY=your_api_key_here
 ### Step 3: Test It
 
 1. Start LocalFlow: `bun run dev:all`
-2. Open http://localhost:3000
+2. Open http://localhost:3005
 3. Click the microphone and speak
 4. Your speech should be transcribed!
 
@@ -255,7 +255,7 @@ Here's how the pieces fit together:
 ```
 ┌─────────────────┐         ┌──────────────────┐
 │   Web Browser   │◄───────►│  Next.js App     │
-│   (page.tsx)    │   HTTP  │  (port 3000)     │
+│   (page.tsx)    │   HTTP  │  (port 3005)     │
 └────────┬────────┘         └────────┬─────────┘
          │                           │
          │ WebSocket                 │ API calls
@@ -264,7 +264,7 @@ Here's how the pieces fit together:
 ┌─────────────────┐         ┌──────────────────┐
 │ WebSocket       │◄───────►│  Transcribe API  │
 │ Service         │         │  Refine API      │
-│ (port 3001)     │         │                  │
+│ (port 3002)     │         │                  │
 └────────┬────────┘         └──────────────────┘
          │
          │ WebSocket
@@ -317,11 +317,12 @@ You should see:
 ============================================
 LocalFlow Desktop Agent
 ============================================
-Hotkey: alt+v
+Hotkey: alt+l
 Mode: developer
-Processing: cloud
+Processing: networked-local
 ============================================
-Listening for hotkey: alt+v
+Registering hotkeys: ['<alt_l>+l', '<alt_r>+l', '<alt_gr>+l']
+Listening for hotkey: alt+l
 Press the hotkey to start recording, release to stop and transcribe.
 Press Ctrl+C to exit.
 ```
@@ -330,9 +331,11 @@ Press Ctrl+C to exit.
 
 1. Make sure the web app is running (`bun run dev:all`)
 2. Open any text editor (VS Code, Notepad, etc.)
-3. Hold **Alt+V** and speak
+3. Hold **Alt+L** and speak
 4. Release when done
 5. Text appears where your cursor is!
+
+**Note:** The default hotkey is now **Alt+L** (changed from Alt+V in v1.2.0). Letter keys work more reliably than symbol keys for hotkeys. You can customize this in your `.env` file with `LOCALFLOW_HOTKEY=alt+l` (use letter keys, not symbols).
 
 ### macOS Note:
 
@@ -601,18 +604,18 @@ OLLAMA_MODEL=llama3.2:1b
 ## Step 4: Test Local Mode
 
 1. **Make sure Ollama is running:**
-   
+
    ```bash
    ollama serve
    ```
 
 2. **Start LocalFlow:**
-   
+
    ```bash
    bun run dev:all
    ```
 
-3. **Open the web UI:** [http://localhost:3000](http://localhost:3000)
+3. **Open the web UI:** [http://localhost:3005](http://localhost:3005)
 
 4. **In Settings (gear icon), select "Local Mode"**
 
@@ -823,12 +826,12 @@ OLLAMA_MODEL=llama3.2:1b
    ```
 
 2. **On the client machine**, start LocalFlow:
-   
+
    ```bash
    bun run dev:all
    ```
 
-3. **Open the web UI** at http://localhost:3000
+3. **Open the web UI** at http://localhost:3005
 
 4. **Record and transcribe!** The audio will be sent to your processing machine.
 
@@ -1042,6 +1045,36 @@ Make sure it's running:
 ollama serve
 ```
 
+### "Hotkey Not Working" (Desktop Agent)
+
+**Symptoms:**
+- Pressing hotkey does nothing
+- Recording doesn't start
+- Keys type instead of triggering recording
+
+**Solutions:**
+1. Check agent is running: `python agent/localflow-agent.py`
+2. Verify hotkey uses letter key, not symbol: `LOCALFLOW_HOTKEY=alt+l` (avoid `/`, `?`, `-`)
+3. Check agent logs for: `[INFO] Registering hotkeys: ['<alt_l>+l', ...]`
+4. Try different Alt variants (left Alt, right Alt, AltGr)
+5. On Windows, run agent as Administrator
+
+**Why Letter Keys Work Better:**
+As of v1.2.0, LocalFlow uses pynput's `GlobalHotKeys` class which works best with letter keys. Symbol keys like `/` and `?` share physical keys (the `/` key also produces `?` with shift), making them unreliable for hotkeys. Letter keys don't have this problem and are automatically suppressed so they won't type while Alt is held.
+
+### "Transcription Failed" Error
+
+**Symptoms:**
+- `[ERROR] Dictation failed: Transcription failed`
+- Recording works but no text appears
+
+**Solutions:**
+1. Check Whisper server is running: `curl http://your-server:port/health`
+2. Verify `WHISPER_API_URL` is correct in `.env`
+3. Check network connectivity to Whisper server
+4. Test server manually: `curl -X POST -F "file=@audio.wav" http://server:port/inference`
+5. Check agent logs for detailed error messages
+
 ---
 
 ## Development Tips
@@ -1117,8 +1150,8 @@ bun run dev:all
 ### Start Individual Services
 
 ```bash
-bun run dev      # Web app on :3000
-bun run dev:ws   # WebSocket on :3001
+bun run dev      # Web app on :3005
+bun run dev:ws   # WebSocket on :3002
 ```
 
 ### Start Desktop Agent
@@ -1130,9 +1163,14 @@ python localflow-agent.py
 
 ### Default Hotkey
 
-`Alt + V` (hold to record, release to transcribe)
+`Alt + L` (hold to record, release to transcribe)
+
+**Customize in `.env`:**
+```bash
+LOCALFLOW_HOTKEY=alt+l  # Use letter keys (alt+l, alt+v, alt+d, etc.)
+```
 
 ### URLs
 
-- Web UI: http://localhost:3000
-- WebSocket: ws://localhost:3001
+- Web UI: http://localhost:3005
+- WebSocket: ws://localhost:3002

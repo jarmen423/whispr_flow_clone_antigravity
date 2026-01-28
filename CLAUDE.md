@@ -20,7 +20,7 @@ bun run dev:all
 
 # Start individually
 bun run dev          # Next.js app on port 3005
-bun run dev:ws       # WebSocket service on port 3001
+bun run dev:ws       # WebSocket service on port 3002
 ```
 
 ### Building and Production
@@ -47,7 +47,9 @@ pip install -r requirements.txt
 python localflow-agent.py
 ```
 
-Default hotkey: `Alt+V` (hold to record, release to transcribe)
+Default hotkey: `Alt+L` (hold to record, release to transcribe)
+
+**Note:** As of v1.2.0, the default hotkey changed from `Alt+V` to `Alt+L`. Letter keys work more reliably with pynput's `GlobalHotKeys` class. All Alt variants (left, right, AltGr) are supported.
 
 ## Architecture Overview
 
@@ -65,7 +67,7 @@ Default hotkey: `Alt+V` (hold to record, release to transcribe)
 ┌─────────────────┐         ┌──────────────────┐
 │ WebSocket       │◄───────►│  Transcribe API  │
 │ Service         │         │  Refine API      │
-│ (port 3001)     │         │                  │
+│ (port 3002)     │         │                  │
 └────────┬────────┘         └──────────────────┘
          │
          │ WebSocket
@@ -86,7 +88,7 @@ Default hotkey: `Alt+V` (hold to record, release to transcribe)
   - `api/dictation/refine/` - Text refinement endpoint
 - **`src/components/ui/`** - shadcn/ui components (buttons, dialogs, etc.)
 - **`src/hooks/use-websocket.ts`** - WebSocket connection management
-- **`mini-services/websocket-service/`** - Socket.IO server (port 3001)
+- **`mini-services/websocket-service/`** - Socket.IO server (port 3002)
 - **`agent/`** - Python desktop agent for global hotkey dictation
 
 ## Data Flow
@@ -156,7 +158,7 @@ WHISPER_MODEL_PATH=./models/ggml-small-q5_1.bin
 
 # Ollama (used for both networked-local and local)
 OLLAMA_URL=http://localhost:11434
-OLLAMA_MODEL=llama3.2:1b
+OLLAMA_MODEL=qwen2:1.5b
 ```
 
 ## Processing Mode Selection
@@ -183,12 +185,17 @@ System prompts are defined in `src/app/api/dictation/refine/route.ts`.
 Set via environment variables:
 
 ```bash
-LOCALFLOW_WS_URL=http://localhost:3001    # WebSocket server URL
-LOCALFLOW_HOTKEY=alt+v                    # Global hotkey
+LOCALFLOW_WS_URL=http://localhost:3002    # WebSocket server URL
+LOCALFLOW_HOTKEY=alt+l                    # Global hotkey (use letter keys)
 LOCALFLOW_MODE=developer                  # Refinement mode
-LOCALFLOW_PROCESSING=cloud                # Processing mode
+LOCALFLOW_PROCESSING=networked-local      # Processing mode
 DEBUG=1                                   # Enable debug logging
 ```
+
+**Hotkey Configuration (v1.2.0+)**
+- Use letter keys: `alt+l`, `alt+v`, `alt+d`, etc.
+- Avoid symbol keys like `/`, `?`, `-` (they share physical keys and are unreliable)
+- All Alt variants are supported: left Alt, right Alt, AltGr
 
 ## Important Implementation Details
 
@@ -225,7 +232,7 @@ Files are cleaned up after processing. The temp directory is created automatical
 Default ports (can be changed via environment variables):
 
 - **3005** - Next.js application (`PORT`)
-- **3001** - WebSocket service (`WS_PORT`)
+- **3002** - WebSocket service (`WS_PORT`)
 - **11434** - Ollama server
 - **8080** - Whisper.cpp server (networked-local mode)
 
@@ -272,6 +279,22 @@ Test files should be placed in a `tests/` directory.
 - Install Python dependencies: `pip install -r agent/requirements.txt`
 - Check `LOCALFLOW_WS_URL` matches WebSocket service port
 - On macOS, grant microphone and accessibility permissions
+
+### Hotkey not working (v1.2.0+)
+
+**Symptoms:**
+- Pressing hotkey does nothing
+- Recording doesn't start
+- Keys type instead of triggering recording
+
+**Solutions:**
+1. Check agent logs for: `[INFO] Registering hotkeys: ['<alt_l>+l', '<alt_r>+l', '<alt_gr>+l']`
+2. Verify hotkey uses letter key: `LOCALFLOW_HOTKEY=alt+l` (avoid `/`, `?`, `-`)
+3. Try different Alt variants (left Alt, right Alt, AltGr)
+4. On Windows, run agent as Administrator
+
+**Why Letter Keys:**
+Symbol keys share physical keys (e.g., `/` and `?` are the same key), making them unreliable for hotkeys. Letter keys work best with pynput's `GlobalHotKeys` class.
 
 ## Development Notes
 

@@ -2,57 +2,264 @@
 
 All notable changes to LocalFlow will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [1.0.0] - 2025-01-27
-
-### Added
-
-- Initial release of LocalFlow
-- Web UI with recording interface and audio visualization
-- Real-time WebSocket communication between browser and desktop agent
-- Cloud processing mode for fast transcription (demo implementation)
-- Local processing mode support (Whisper.cpp + Ollama)
-- Desktop Python agent with global hotkey support
-- Four refinement modes: Developer, Concise, Professional, Raw
-- Dictation history with local storage persistence
-- Settings management with localStorage
-- Auto-copy to clipboard functionality
-- Sound effects for recording events
-- shadcn/ui component library integration
-- Framer Motion animations
-- Dark mode by default
-- Comprehensive setup guide and documentation
-
-### Technical Details
-
-- Next.js 15 with App Router
-- React 19
-- TypeScript strict mode
-- Tailwind CSS 3
-- Socket.IO 4.8 for WebSocket communication
-- Python 3.7+ desktop agent
-- Bun runtime for development
-
-### Security
-
-- Input validation for all API endpoints
-- Rate limiting on WebSocket connections
-- Audio size limits (5MB max)
-- Text length limits (10,000 characters)
-- CORS configuration
-- Path traversal prevention in temp files
 
 ## [Unreleased]
 
-### Planned
+## [1.2.0] - 2026-01-28
 
-- Real cloud ASR integration (z-ai-web-dev-sdk)
-- Voice activity detection (auto-stop on silence)
-- Noise suppression for local transcription
-- Custom system prompts for LLM refinement
-- Multi-language support
-- Browser extension
-- VS Code extension
-- Mobile app (React Native)
+### Fixed - Agent Hotkey Detection
+
+**Improved Global Hotkey Detection**
+- Switched from manual VK code detection to pynput's `GlobalHotKeys` class
+- Added support for all Alt key variants:
+  - Left Alt (`<alt_l>`)
+  - Right Alt (`<alt_r>`)
+  - AltGr (`<alt_gr>`)
+- Changed default hotkey from `Alt+Z` to `Alt+L` (letter keys work more reliably)
+
+**Why These Changes Were Needed**
+- Previous implementation using manual VK code detection wasn't capturing Alt key presses reliably on Windows
+- Symbol keys like `/` and `?` share physical keys and have dual functions, making them problematic for hotkeys
+- `GlobalHotKeys` class automatically handles detection and key suppression for letter keys
+- Letter keys don't have shift variants and work much better for hotkey combinations
+
+**Fixed Issues**
+- ✅ Alt key now properly detected in all combinations
+- ✅ Hotkey release detection now works reliably
+- ✅ Letter keys are automatically suppressed (won't type while Alt is held)
+- ✅ Recording starts and stops correctly on hotkey press/release
+
+**Technical Details**
+- Replaced manual `Listener` with `on_press`/`on_release` callbacks
+- Now uses `GlobalHotKeys` with three registered combinations:
+  - `<alt_l>+l`
+  - `<alt_r>+l`
+  - `<alt_gr>+l`
+- Separate `Listener` still tracks key releases for stopping recording
+- Added `_on_hotkey_press()` method as callback for `GlobalHotKeys`
+
+**Files Changed**
+- `agent/localflow-agent.py` - Rewrote `_setup_hotkey_listener()` method
+- `agent/requirements.txt` - Added `python-dotenv` dependency
+
+### Changed - LLM Refinement
+
+**Switched to Ollama Chat API**
+- Changed from Ollama `generate` endpoint to `chat/completions` endpoint
+- Updated system prompts for better text refinement
+- Added developer, concise, professional, and raw modes
+
+**Benefits**
+- Better compatibility with Ollama 1.5+ models
+- More reliable responses from smaller models
+- Improved text formatting and punctuation
+
+### Changed - WebSocket Transport
+
+**Fixed WebSocket Connection Issues**
+- Added explicit `transports=['polling', 'websocket']` to Socket.IO connection
+- Added `websocket-client` Python dependency for proper WebSocket transport support
+- Fixed connection issues between Python agent and Node.js server
+
+### Changed - Port Configuration
+
+**Updated Default Ports**
+- WebSocket service: `3001` → `3002`
+- Next.js app: `3000` → `3005`
+- Updated all documentation and environment variable defaults
+
+### Added - Visual Recording Overlay
+
+**RecordingOverlay Component**
+- Added visual feedback when recording is active
+- Shows overlay window while recording
+- Automatically hides when recording stops
+
+## [1.1.0] - 2026-01-27
+
+### Added - Three-Tier Processing Mode
+
+**Cloud Mode (New)**
+- Fast processing via Z.AI API
+- Requires `ZAI_API_KEY` environment variable
+- Uses `glm-asr-2512` for speech-to-text
+- Uses `glm-4.7-flash` for text refinement
+
+**Networked Local Mode (Default)**
+- Free processing using remote Whisper.cpp and Ollama servers
+- Configure `WHISPER_API_URL` for remote Whisper server
+- Configure `OLLAMA_URL` for remote Ollama server
+- Recommended for home network setups
+
+**Local Mode**
+- Everything runs on the same machine
+- Requires local Whisper.cpp binary and models
+- Requires local Ollama installation
+
+### Added - Z.AI Cloud API Integration
+
+**Speech-to-Text**
+- GLM-ASR-2512 model via Z.AI API
+- 60-second timeout
+- Automatic fallback to local modes if API key not set
+
+**Text Refinement**
+- GLM-4.7-Flash model for fast processing
+- Configurable via `ZAI_LLM_MODEL` environment variable
+
+### Fixed - Whisper.cpp Server Instructions
+
+- Corrected build instructions using CMake
+- Fixed binary path in documentation
+- Updated model download URLs
+
+## [1.0.0] - 2026-01-26
+
+### Initial Release
+
+**Core Features**
+- Global hotkey dictation (default: Alt+Z)
+- Real-time audio recording
+- WebSocket communication between agent and server
+- Speech-to-text via Whisper.cpp
+- Text refinement via Ollama
+- Multiple refinement modes (developer, concise, professional, raw)
+- Web UI for configuration and monitoring
+- Clipboard integration with automatic paste
+
+**Architecture**
+- Python desktop agent with global hotkey listener
+- Next.js 16 web application
+- Socket.IO WebSocket service
+- Modular API routes for transcription and refinement
+
+**Supported Platforms**
+- Windows 10/11
+- macOS 12+
+- Linux (tested on Ubuntu 22.04)
+
+---
+
+## Upgrade Notes
+
+### Upgrading from 1.1.0 to 1.2.0
+
+**Hotkey Changes**
+If you customized `LOCALFLOW_HOTKEY` in your `.env`, you may need to update it:
+- Symbol keys (like `/`, `?`, `-`) are no longer recommended
+- Use letter keys instead: `alt+l`, `alt+v`, `alt+d`, etc.
+- All Alt variants (left, right, AltGr) are now supported
+
+**Required Actions**
+1. Pull latest changes: `git pull origin main`
+2. Reinstall Python dependencies: `pip install -r agent/requirements.txt`
+3. Update `.env` if using symbol keys in hotkey
+4. Restart the agent: `python agent/localflow-agent.py`
+
+### Upgrading from 1.0.0 to 1.1.0
+
+**New Processing Modes**
+- Update `.env` to select processing mode: `PROCESSING_MODE=cloud|networked-local|local`
+- Configure appropriate URLs for your chosen mode
+- Cloud mode requires `ZAI_API_KEY`
+
+**Port Changes**
+- Update `WS_PORT` from `3001` to `3002` in `.env`
+- Update `PORT` from `3000` to `3005` in `.env`
+
+---
+
+## Configuration Reference
+
+### Environment Variables
+
+**Hotkey Configuration**
+```bash
+# Default hotkey (use letter keys)
+LOCALFLOW_HOTKEY=alt+l
+```
+
+**Processing Mode Selection**
+```bash
+# Choose processing mode
+PROCESSING_MODE=networked-local  # cloud, networked-local, local
+```
+
+**Cloud Mode (Z.AI API)**
+```bash
+ZAI_API_KEY=your_api_key_here
+ZAI_API_BASE_URL=https://api.z.ai/api/paas/v4
+ZAI_ASR_MODEL=glm-asr-2512
+ZAI_LLM_MODEL=glm-4.7-flash
+```
+
+**Networked Local Mode**
+```bash
+WHISPER_API_URL=http://192.168.1.100:8080
+OLLAMA_URL=http://192.168.1.100:11434
+OLLAMA_MODEL=qwen2:1.5b
+OLLAMA_TEMPERATURE=0.1
+```
+
+**Local Mode**
+```bash
+WHISPER_PATH=/usr/local/bin/whisper
+WHISPER_MODEL_PATH=./models/ggml-small-q5_1.bin
+WHISPER_THREADS=8
+```
+
+---
+
+## Troubleshooting
+
+### Hotkey Not Working
+
+**Symptoms**
+- Pressing hotkey does nothing
+- Recording doesn't start
+- Keys type instead of triggering recording
+
+**Solutions**
+1. Check agent is running: `python agent/localflow-agent.py`
+2. Verify hotkey uses letter key, not symbol: `LOCALFLOW_HOTKEY=alt+l`
+3. Check agent logs for: `[INFO] Registering hotkeys: ['<alt_l>+l', ...]`
+4. Try different Alt variants (left Alt, right Alt, AltGr)
+5. On Windows, run agent as Administrator
+
+### Transcription Failed
+
+**Symptoms**
+- `[ERROR] Dictation failed: Transcription failed`
+- Recording works but no text appears
+
+**Solutions**
+1. Check Whisper server is running: `curl http://your-server:port/health`
+2. Verify `WHISPER_API_URL` is correct in `.env`
+3. Check network connectivity to Whisper server
+4. Test server manually: `curl -X POST -F "file=@audio.wav" http://server:port/inference`
+5. Check agent logs for detailed error messages
+
+### WebSocket Connection Issues
+
+**Symptoms**
+- `[ERROR] Failed to connect: ...`
+- Agent can't reach server
+
+**Solutions**
+1. Start WebSocket service: `bun run dev:ws` or `bun run start:ws`
+2. Check `LOCALFLOW_WS_URL` matches `WS_PORT` in `.env`
+3. Verify ports are not in use: `netstat -an | grep 3002`
+4. Check firewall settings
+5. Ensure both services are on same network (for networked-local mode)
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on submitting changes.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
