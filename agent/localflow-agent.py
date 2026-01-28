@@ -407,9 +407,17 @@ class LocalFlowAgent:
             "shift": 160,  # VK_LSHIFT
         }
 
+        # Special keys with VK codes different from ASCII
+        special_keys = {
+            "/": 191,   # VK_OEM_2 (/ ? key)
+            "?": 191,   # Same key, shifted
+        }
+
         for part in parts:
             if part in vk_map:
                 vk_codes.add(vk_map[part])
+            elif part in special_keys:
+                vk_codes.add(special_keys[part])
             elif len(part) == 1:
                 # For regular characters, use ord() to get the virtual key code
                 vk_codes.add(ord(part.upper()))
@@ -431,73 +439,88 @@ class LocalFlowAgent:
             keyboard.Key.shift_l: 160,
             keyboard.Key.shift_r: 161,
         }
-        
+
         if key in modifier_vk_map:
             return modifier_vk_map[key]
-        
+
         # For KeyCode objects
         if hasattr(key, "vk") and key.vk is not None:
             return key.vk
-        
+
         # For character keys
         if hasattr(key, "char") and key.char:
             return ord(key.char.upper())
-        
+
         return None
 
     def _setup_hotkey_listener(self):
         """Set up global hotkey listener"""
-        current_vks = set()
-        target_vks = self._parse_hotkey(self.hotkey)
-        
-        # Treat left and right alt as the same
-        alt_vks = {164, 165}  # VK_LMENU, VK_RMENU
+        from pynput.keyboard import GlobalHotKeys, Key, KeyCode
+
+        # Parse the hotkey string
+        parts = self.hotkey.lower().replace("+", " ").split()
+
+        # Build hotkey combinations for all Alt variants
+        hotkeys = {}
+
+        # For 'alt+l': create combinations for all Alt variants
+        if parts[0] == "alt" and len(parts) == 2 and len(parts[1]) == 1:
+            target_char = parts[1]
+
+            for alt_key in [Key.alt_l, Key.alt_r, Key.alt_gr]:
+                # Create string format for GlobalHotKeys
+                alt_names = {
+                    Key.alt_l: '<alt_l>',
+                    Key.alt_r: '<alt_r>',
+                    Key.alt_gr: '<alt_gr>'
+                }
+                combo_str = alt_names[alt_key] + '+' + target_char
+                hotkeys[combo_str] = self._on_hotkey_press
+
+        log_info(f"Registering hotkeys: {list(hotkeys.keys())}")
+
+        # Create GlobalHotKeys instance
+        self.hotkey_listener = GlobalHotKeys(hotkeys)
+
+        # Also track key release manually
+        self.pressed_keys = set()
 
         def on_press(key):
-            if not self.running:
-                return False
-
-            vk = self._get_vk(key)
-            if vk is not None:
-                # Normalize right alt to left alt for matching
-                if vk == 165:  # Right alt
-                    vk = 164  # Treat as left alt
-                current_vks.add(vk)
-
-            log_debug(f"Key pressed: {key}, vk: {vk}, current_vks: {current_vks}, target_vks: {target_vks}")
-
-            # Check if hotkey combination is pressed
-            if target_vks.issubset(current_vks):
-                if not self.hotkey_pressed:
-                    self.hotkey_pressed = True
-                    log_info("Hotkey detected! Starting recording...")
-                    self._start_recording()
+            self.pressed_keys.add(key)
+            log_debug(f"PRESS: {key}, pressed: {self.pressed_keys}")
 
         def on_release(key):
-            if not self.running:
-                return False
+            self.pressed_keys.discard(key)
+            log_debug(f"RELEASE: {key}, pressed: {self.pressed_keys}")
 
-            vk = self._get_vk(key)
-            
-            # Normalize right alt to left alt
-            if vk == 165:
-                vk = 164
-
-            # Check if we need to stop recording
+            # Stop recording if recording and we release the hotkey
             if self.hotkey_pressed and self.recorder.is_recording():
-                if vk in target_vks:
+                # Check if released key is Alt or the letter
+                if key in [Key.alt_l, Key.alt_r, Key.alt_gr]:
+                    self.hotkey_pressed = False
+                    log_info("Hotkey released! Stopping recording...")
+                    self._stop_recording()
+                elif hasattr(key, 'char') and key.char and key.char.lower() == parts[1]:
                     self.hotkey_pressed = False
                     log_info("Hotkey released! Stopping recording...")
                     self._stop_recording()
 
-            # Clean up current keys
-            if vk is not None:
-                current_vks.discard(vk)
+        # Start a regular listener to track key releases
+        self.release_listener = keyboard.Listener(on_press=on_press, on_release=on_release)
+        self.release_listener.start()
 
-        # Start listener
-        listener = keyboard.Listener(on_press=on_press, on_release=on_release)
-        listener.start()
-        return listener
+        # Start the hotkey listener
+        self.hotkey_listener.start()
+
+        # Return a mock listener object for compatibility
+        return type('MockListener', (), {'stop': lambda: None})()
+
+    def _on_hotkey_press(self):
+        """Called when hotkey is pressed"""
+        if not self.hotkey_pressed:
+            self.hotkey_pressed = True
+            log_info("Hotkey detected! Starting recording...")
+            self._start_recording()
 
     def run(self):
         """Main run loop"""

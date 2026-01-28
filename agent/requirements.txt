@@ -24,3 +24,4 @@ pyperclip>=1.8.2
 pyautogui>=0.9.54
 requests
 
+python-dotenv
