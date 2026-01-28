@@ -204,8 +204,9 @@ class AudioRecorder:
 class PasteHandler:
     """Handles clipboard and paste operations"""
 
-    def __init__(self):
+    def __init__(self, agent=None):
         self.last_paste_time = 0
+        self.agent = agent  # Reference to agent for keyboard flag
 
     def paste_text(self, text: str) -> bool:
         """Copy text to clipboard and simulate paste"""
@@ -247,7 +248,7 @@ class LocalFlowAgent:
 
     def __init__(self):
         self.recorder = AudioRecorder()
-        self.paste_handler = PasteHandler()
+        self.paste_handler = PasteHandler(self)  # Pass agent reference for keyboard flag
         self.overlay = RecordingOverlay()  # Visual feedback overlay
         self.sio = socketio.Client(
             reconnection=True,
@@ -261,6 +262,7 @@ class LocalFlowAgent:
         self.hotkey = CONFIG.hotkey
         self.running = True
         self.hotkey_pressed = False
+        self.pasting_in_progress = False  # Flag to prevent keyboard listener interference
 
         # Set up Socket.IO event handlers
         self._setup_socket_handlers()
@@ -488,10 +490,14 @@ class LocalFlowAgent:
         self.pressed_keys = set()
 
         def on_press(key):
+            if self.pasting_in_progress:
+                return  # Ignore keyboard events during paste
             self.pressed_keys.add(key)
             log_debug(f"PRESS: {key}, pressed: {self.pressed_keys}")
 
         def on_release(key):
+            if self.pasting_in_progress:
+                return  # Ignore keyboard events during paste
             self.pressed_keys.discard(key)
             log_debug(f"RELEASE: {key}, pressed: {self.pressed_keys}")
 
