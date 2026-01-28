@@ -227,11 +227,20 @@ class PasteHandler:
             # Longer delay for clipboard to be ready
             time.sleep(0.2)
 
-            # Simulate Ctrl+V (or Cmd+V on macOS)
+            # Simulate paste (auto-detect Windows Terminal)
             if sys.platform == "darwin":
                 pyautogui.hotkey("command", "v")
             else:
-                pyautogui.hotkey("ctrl", "v")
+                # Detect if Windows Terminal is focused (uses Alt+V)
+                try:
+                    active_window = pyautogui.getActiveWindow()
+                    window_title = active_window.title if active_window else ""
+                    # Windows Terminal typically has "Windows Terminal" in title
+                    is_windows_terminal = "windows terminal" in window_title.lower()
+                    pyautogui.hotkey("alt" if is_windows_terminal else "ctrl", "v")
+                except:
+                    # Fallback to Ctrl+V if window detection fails
+                    pyautogui.hotkey("ctrl", "v")
 
             # Additional delay to let paste complete
             time.sleep(0.1)
