@@ -1,0 +1,22 @@
+# LocalFlow Desktop Agent - Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Global hotkey listener
+pynput>=1.7.6
+
+# Audio recording
+sounddevice>=0.4.6
+numpy>=1.24.0
+
+# Audio file I/O
+scipy>=1.10.0
+
+# WebSocket client
+python-socketio>=5.10.0
+python-engineio>=4.8.0
+
+# Clipboard management
+pyperclip>=1.8.2
+
+# Keyboard simulation
+pyautogui>=0.9.54
