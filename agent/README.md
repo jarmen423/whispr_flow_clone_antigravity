@@ -27,13 +27,13 @@ python localflow-agent.py
 
 Set these environment variables:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `LOCALFLOW_WS_URL` | `http://localhost:3001` | WebSocket server URL |
-| `LOCALFLOW_HOTKEY` | `alt+v` | Global hotkey |
-| `LOCALFLOW_MODE` | `developer` | Refinement mode (developer, concise, professional, raw) |
-| `LOCALFLOW_PROCESSING` | `cloud` | Processing mode (cloud, local) |
-| `DEBUG` | - | Set to any value for debug logging |
+| Variable               | Default                                             | Description                                             |
+| ---------------------- | --------------------------------------------------- | ------------------------------------------------------- |
+| `LOCALFLOW_WS_URL`     | `http://localhost:3001` | WebSocket server URL                                    |
+| `LOCALFLOW_HOTKEY`     | `alt+v`                                             | Global hotkey                                           |
+| `LOCALFLOW_MODE`       | `developer`                                         | Refinement mode (developer, concise, professional, raw) |
+| `LOCALFLOW_PROCESSING` | `cloud`                                             | Processing mode (cloud, local)                          |
+| `DEBUG`                | -                                                   | Set to any value for debug logging                      |
 
 ## Hotkey Options
 
@@ -44,20 +44,26 @@ Set these environment variables:
 ## Troubleshooting
 
 ### "No audio device found"
+
 Make sure you have a microphone connected and it's the default input device.
 
 ### "Connection failed"
+
 Ensure the LocalFlow server is running:
+
 ```bash
 cd /path/to/localflow
 bun run dev:all
 ```
 
 ### "Permission denied" (Linux)
+
 You may need to run with elevated permissions for the global hotkey to work in all applications.
 
 ### macOS Permissions
+
 Grant these permissions in System Preferences > Security & Privacy:
+
 - Microphone access
 - Accessibility (for keyboard simulation)
 
