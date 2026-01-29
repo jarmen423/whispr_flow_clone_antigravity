@@ -7,10 +7,10 @@ import { NextRequest, NextResponse } from "next/server";
 // Processing mode: 'cloud' | 'networked-local' | 'local'
 const PROCESSING_MODE = process.env.PROCESSING_MODE || "networked-local";
 
-// Z.AI Cloud API Configuration
-const ZAI_API_KEY = process.env.ZAI_API_KEY || "";
-const ZAI_API_BASE_URL = process.env.ZAI_API_BASE_URL || "https://api.z.ai/api/paas/v4";
-const ZAI_LLM_MODEL = process.env.ZAI_LLM_MODEL || "glm-4.7-flash";
+// Groq Cloud API Configuration (for LLM text refinement)
+const ZAI_API_KEY = process.env.GROQ_API_KEY || process.env.ZAI_API_KEY || "";
+const GROQ_LLM_API_BASE_URL = process.env.GROQ_LLM_API_BASE_URL || "https://api.groq.com/openai/v1/chat/completions";
+const ZAI_LLM_MODEL = process.env.GROQ_LLM_MODEL || process.env.ZAI_LLM_MODEL || "llama-3.3-70b-versatile";
 
 // Ollama Configuration (for networked-local and local modes)
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
@@ -120,7 +120,7 @@ function getEffectiveMode(requestedMode?: string): "cloud" | "networked-local" |
   // Cloud mode requires API key
   if (mode === "cloud") {
     if (!ZAI_API_KEY) {
-      console.warn("[Refine] Cloud mode requested but ZAI_API_KEY not set, falling back to networked-local");
+      console.warn("[Refine] Cloud mode requested but GROQ_API_KEY not set, falling back to networked-local");
       return "networked-local";
     }
     return "cloud";
@@ -131,25 +131,25 @@ function getEffectiveMode(requestedMode?: string): "cloud" | "networked-local" |
 }
 
 // ============================================
-// Cloud Refinement (Z.AI API)
+// Cloud Refinement (Groq API)
 // ============================================
 
 /**
- * Refine text using Z.AI GLM-4.7-Flash API
- * API Docs: https://docs.z.ai/api-reference/llm/chat-completion
+ * Refine text using Groq LLM API
+ * API Docs: https://console.groq.com/docs/quickstart
  */
 async function refineCloud(text: string, mode: Exclude<RefinementMode, "raw">): Promise<string> {
   if (!ZAI_API_KEY) {
     throw new Error(
-      "ZAI_API_KEY is required for cloud mode. " +
-      "Get your API key from: https://z.ai/manage-apikey/apikey-list"
+      "GROQ_API_KEY is required for cloud mode. " +
+      "Get your API key from: https://console.groq.com/keys"
     );
   }
 
   const systemPrompt = SYSTEM_PROMPTS[mode];
 
   try {
-    const response = await fetch(`${ZAI_API_BASE_URL}/chat/completions`, {
+    const response = await fetch(GROQ_LLM_API_BASE_URL, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${ZAI_API_KEY}`,
@@ -165,8 +165,6 @@ async function refineCloud(text: string, mode: Exclude<RefinementMode, "raw">): 
         top_p: 0.9,
         max_tokens: 2000,
         stream: false,
-        // Disable thinking mode for faster responses
-        thinking: { type: "disabled" },
       }),
       signal: AbortSignal.timeout(30000), // 30 second timeout
     });
@@ -176,32 +174,32 @@ async function refineCloud(text: string, mode: Exclude<RefinementMode, "raw">): 
 
       // Handle common error cases
       if (response.status === 401) {
-        throw new Error("Invalid ZAI_API_KEY. Check your API key at https://z.ai/manage-apikey/apikey-list");
+        throw new Error("Invalid GROQ_API_KEY. Check your API key at https://console.groq.com/keys");
       }
       if (response.status === 429) {
-        throw new Error("Z.AI rate limit exceeded. Please try again later.");
+        throw new Error("Groq rate limit exceeded. Please try again later.");
       }
 
-      throw new Error(`Z.AI API error (${response.status}): ${errorText}`);
+      throw new Error(`Groq API error (${response.status}): ${errorText}`);
     }
 
     const result = await response.json();
 
-    // Z.AI returns OpenAI-compatible format: { choices: [{ message: { content: "..." } }] }
+    // Groq returns OpenAI-compatible format: { choices: [{ message: { content: "..." } }] }
     const refinedText = result.choices?.[0]?.message?.content;
 
     if (!refinedText) {
-      throw new Error("Empty response from Z.AI LLM");
+      throw new Error("Empty response from Groq LLM");
     }
 
     return refinedText.trim();
   } catch (error) {
     if (error instanceof Error) {
       if (error.name === "AbortError" || error.message.includes("timeout")) {
-        throw new Error("Z.AI API request timed out (30s limit)");
+        throw new Error("Groq API request timed out (30s limit)");
       }
       if (error.message.includes("fetch failed") || error.message.includes("ECONNREFUSED")) {
-        throw new Error("Failed to connect to Z.AI API. Check your internet connection.");
+        throw new Error("Failed to connect to Groq API. Check your internet connection.");
       }
       throw error;
     }

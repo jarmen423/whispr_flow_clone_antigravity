@@ -11,10 +11,10 @@ import { tmpdir } from "os";
 // Processing mode: 'cloud' | 'networked-local' | 'local'
 const PROCESSING_MODE = process.env.PROCESSING_MODE || "networked-local";
 
-// Z.AI Cloud API Configuration
-const ZAI_API_KEY = process.env.ZAI_API_KEY || "";
-const ZAI_API_BASE_URL = process.env.ZAI_API_BASE_URL || "https://api.z.ai/api/paas/v4";
-const ZAI_ASR_MODEL = process.env.ZAI_ASR_MODEL || "glm-asr-2512";
+// Groq Cloud API Configuration (for audio transcription)
+const ZAI_API_KEY = process.env.GROQ_API_KEY || process.env.ZAI_API_KEY || "";
+const GROQ_ASR_API_BASE_URL = process.env.GROQ_ASR_API_BASE_URL || "https://api.groq.com/openai/v1/audio/transcriptions";
+const ZAI_ASR_MODEL = process.env.GROQ_ASR_MODEL || process.env.ZAI_ASR_MODEL || "whisper-large-v3";
 
 // Remote Whisper API Configuration (for networked-local mode)
 const WHISPER_API_URL = process.env.WHISPER_API_URL || "";
@@ -92,7 +92,7 @@ function getEffectiveMode(requestedMode?: string): "cloud" | "networked-local" |
   // Cloud mode requires API key
   if (mode === "cloud") {
     if (!ZAI_API_KEY) {
-      console.warn("[Transcribe] Cloud mode requested but ZAI_API_KEY not set, falling back to networked-local");
+      console.warn("[Transcribe] Cloud mode requested but GROQ_API_KEY not set, falling back to networked-local");
       return WHISPER_API_URL ? "networked-local" : "local";
     }
     return "cloud";
@@ -111,36 +111,41 @@ function getEffectiveMode(requestedMode?: string): "cloud" | "networked-local" |
 }
 
 // ============================================
-// Cloud Transcription (Z.AI API)
+// Cloud Transcription (Groq API)
 // ============================================
 
 /**
- * Transcribe audio using Z.AI GLM-ASR-2512 API
- * API Docs: https://docs.z.ai/api-reference/audio/audio-transcriptions
+ * Transcribe audio using Groq Whisper API
+ * API Docs: https://console.groq.com/docs/speech-text
  */
 async function transcribeCloud(audioBase64: string): Promise<{ text: string; processingTime: number }> {
   const startTime = Date.now();
 
   if (!ZAI_API_KEY) {
     throw new Error(
-      "ZAI_API_KEY is required for cloud mode. " +
-      "Get your API key from: https://z.ai/manage-apikey/apikey-list"
+      "GROQ_API_KEY is required for cloud mode. " +
+      "Get your API key from: https://console.groq.com/keys"
     );
   }
 
   try {
-    // Z.AI ASR API accepts file_base64 for base64-encoded audio
-    const response = await fetch(`${ZAI_API_BASE_URL}/audio/transcriptions`, {
+    // Decode base64 to binary buffer
+    const audioBuffer = Buffer.from(audioBase64, "base64");
+
+    // Create form data with the audio file
+    const formData = new FormData();
+    const audioBlob = new Blob([audioBuffer], { type: "audio/wav" });
+    formData.append("file", audioBlob, "audio.wav");
+    formData.append("model", ZAI_ASR_MODEL);
+    formData.append("response_format", "json");
+
+    // Groq API uses multipart/form-data with file upload
+    const response = await fetch(GROQ_ASR_API_BASE_URL, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${ZAI_API_KEY}`,
-        "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model: ZAI_ASR_MODEL,
-        file_base64: audioBase64,
-        stream: false,
-      }),
+      body: formData,
       signal: AbortSignal.timeout(60000), // 60 second timeout
     });
 
@@ -149,21 +154,21 @@ async function transcribeCloud(audioBase64: string): Promise<{ text: string; pro
 
       // Handle common error cases
       if (response.status === 401) {
-        throw new Error("Invalid ZAI_API_KEY. Check your API key at https://z.ai/manage-apikey/apikey-list");
+        throw new Error("Invalid GROQ_API_KEY. Check your API key at https://console.groq.com/keys");
       }
       if (response.status === 429) {
-        throw new Error("Z.AI rate limit exceeded. Please try again later.");
+        throw new Error("Groq rate limit exceeded. Please try again later.");
       }
       if (response.status === 400 && errorText.includes("duration")) {
         throw new Error("Audio too long. Maximum duration is 30 seconds.");
       }
 
-      throw new Error(`Z.AI API error (${response.status}): ${errorText}`);
+      throw new Error(`Groq API error (${response.status}): ${errorText}`);
     }
 
     const result = await response.json();
 
-    // Z.AI ASR returns { text: "transcribed text", ... }
+    // Groq returns { text: "transcribed text", ... }
     const text = result.text || "";
 
     if (!text.trim()) {
@@ -177,10 +182,10 @@ async function transcribeCloud(audioBase64: string): Promise<{ text: string; pro
   } catch (error) {
     if (error instanceof Error) {
       if (error.name === "AbortError" || error.message.includes("timeout")) {
-        throw new Error("Z.AI API request timed out (60s limit)");
+        throw new Error("Groq API request timed out (60s limit)");
       }
       if (error.message.includes("fetch failed") || error.message.includes("ECONNREFUSED")) {
-        throw new Error("Failed to connect to Z.AI API. Check your internet connection.");
+        throw new Error("Failed to connect to Groq API. Check your internet connection.");
       }
       throw error;
     }
