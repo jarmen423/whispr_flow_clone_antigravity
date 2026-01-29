@@ -19,6 +19,12 @@ const ZAI_ASR_MODEL = process.env.ZAI_ASR_MODEL || "glm-asr-2512";
 // Remote Whisper API Configuration (for networked-local mode)
 const WHISPER_API_URL = process.env.WHISPER_API_URL || "";
 
+// Audio API Type: 'whisper' | 'lfm' | 'auto' (auto-detect)
+// - 'whisper': Use Whisper.cpp server /inference endpoint
+// - 'lfm': Use LFM 2.5 Audio /v1/chat/completions endpoint (multimodal)
+// - 'auto': Try LFM first, fall back to Whisper
+const AUDIO_API_TYPE = process.env.AUDIO_API_TYPE || "auto";
+
 // Local Whisper Binary Configuration (for local mode)
 const WHISPER_PATH = process.env.WHISPER_PATH || "/usr/local/bin/whisper";
 const WHISPER_MODEL_PATH = process.env.WHISPER_MODEL_PATH || "./models/ggml-small-q5_1.bin";
@@ -140,7 +146,7 @@ async function transcribeCloud(audioBase64: string): Promise<{ text: string; pro
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => "Unknown error");
-      
+
       // Handle common error cases
       if (response.status === 401) {
         throw new Error("Invalid ZAI_API_KEY. Check your API key at https://z.ai/manage-apikey/apikey-list");
@@ -151,7 +157,7 @@ async function transcribeCloud(audioBase64: string): Promise<{ text: string; pro
       if (response.status === 400 && errorText.includes("duration")) {
         throw new Error("Audio too long. Maximum duration is 30 seconds.");
       }
-      
+
       throw new Error(`Z.AI API error (${response.status}): ${errorText}`);
     }
 
@@ -183,33 +189,138 @@ async function transcribeCloud(audioBase64: string): Promise<{ text: string; pro
 }
 
 // ============================================
-// Networked Local Transcription (Remote Whisper Server)
+// Networked Local Transcription (Remote Whisper or LFM Server)
 // ============================================
 
 /**
- * Transcribe using remote Whisper.cpp HTTP API server
+ * Transcribe using LFM 2.5 Audio via OpenAI-compatible chat completions API
+ * The audio is sent as multimodal content with a system prompt for ASR
+ * NOTE: LFM 2.5 server requires streaming mode
  */
-async function transcribeNetworkedLocal(audioBase64: string): Promise<{ text: string; processingTime: number }> {
+async function transcribeLFM(audioBase64: string): Promise<{ text: string; processingTime: number }> {
   const startTime = Date.now();
 
   if (!WHISPER_API_URL) {
     throw new Error(
-      "WHISPER_API_URL is required for networked-local mode. " +
+      "WHISPER_API_URL is required for LFM mode. " +
+      "Set it to your LFM 2.5 Audio server URL (e.g., http://192.168.1.100:8888)"
+    );
+  }
+
+  try {
+    // Call the LFM server using OpenAI-compatible chat completions API (streaming required)
+    const response = await fetch(`${WHISPER_API_URL}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "LFM2.5-Audio-1.5B",
+        messages: [
+          {
+            role: "system",
+            content: "Perform ASR."
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_audio",
+                input_audio: {
+                  data: audioBase64,
+                  format: "wav"
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 500,
+        temperature: 0.0,
+        stream: true, // LFM 2.5 server requires streaming
+      }),
+      signal: AbortSignal.timeout(120000), // 120 second timeout for longer audio
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "Unknown error");
+      throw new Error(`LFM API error (${response.status}): ${errorText}`);
+    }
+
+    // Parse streaming response (SSE format)
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("No response body from LFM server");
+    }
+
+    const decoder = new TextDecoder();
+    let aggregatedText = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split("\n");
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const data = line.slice(6).trim();
+          if (data === "[DONE]") continue;
+
+          try {
+            const parsed = JSON.parse(data);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              aggregatedText += content;
+            }
+          } catch {
+            // Skip malformed JSON chunks
+          }
+        }
+      }
+    }
+
+    if (!aggregatedText.trim()) {
+      throw new Error("No speech detected in audio");
+    }
+
+    console.log(`[LFM] Transcribed: "${aggregatedText.trim().substring(0, 100)}..."`);
+
+    return {
+      text: aggregatedText.trim(),
+      processingTime: Date.now() - startTime,
+    };
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.name === "AbortError" || error.message.includes("timeout")) {
+        throw new Error(`LFM API request timed out (120s limit). Server: ${WHISPER_API_URL}`);
+      }
+      if (error.message.includes("ECONNREFUSED") || error.message.includes("fetch failed")) {
+        throw new Error(
+          `Cannot connect to LFM API at ${WHISPER_API_URL}. ` +
+          `Make sure the llama-liquid-audio-server is running.`
+        );
+      }
+      throw error;
+    }
+    throw new Error("Unknown error during LFM transcription");
+  }
+}
+
+/**
+ * Transcribe using remote Whisper.cpp HTTP API server
+ */
+async function transcribeWhisperCpp(audioBase64: string): Promise<{ text: string; processingTime: number }> {
+  const startTime = Date.now();
+
+  if (!WHISPER_API_URL) {
+    throw new Error(
+      "WHISPER_API_URL is required for Whisper.cpp mode. " +
       "Set it to your whisper.cpp server URL (e.g., http://192.168.1.100:8080)"
     );
   }
 
   try {
-    // Test connection first
-    const healthCheck = await fetch(`${WHISPER_API_URL}/health`, {
-      method: "GET",
-      signal: AbortSignal.timeout(5000),
-    }).catch(() => null);
-
-    if (!healthCheck || !healthCheck.ok) {
-      console.log("[Whisper API] Health check not available, trying inference directly");
-    }
-
     // Decode base64 to binary
     const audioBuffer = Buffer.from(audioBase64, "base64");
 
@@ -257,7 +368,66 @@ async function transcribeNetworkedLocal(audioBase64: string): Promise<{ text: st
       }
       throw error;
     }
-    throw new Error("Unknown error during networked transcription");
+    throw new Error("Unknown error during Whisper transcription");
+  }
+}
+
+/**
+ * Transcribe audio using networked local server
+ * Supports both Whisper.cpp and LFM 2.5 Audio servers
+ */
+async function transcribeNetworkedLocal(audioBase64: string): Promise<{ text: string; processingTime: number }> {
+  if (!WHISPER_API_URL) {
+    throw new Error(
+      "WHISPER_API_URL is required for networked-local mode. " +
+      "Set it to your audio server URL (e.g., http://192.168.1.100:8888)"
+    );
+  }
+
+  // Determine which API to use
+  if (AUDIO_API_TYPE === "lfm") {
+    console.log("[Transcribe] Using LFM 2.5 Audio API");
+    return transcribeLFM(audioBase64);
+  }
+
+  if (AUDIO_API_TYPE === "whisper") {
+    console.log("[Transcribe] Using Whisper.cpp API");
+    return transcribeWhisperCpp(audioBase64);
+  }
+
+  // Auto-detect: try to probe the server type
+  console.log("[Transcribe] Auto-detecting API type...");
+
+  try {
+    // Try to detect LFM server by checking /v1/models endpoint
+    const modelsCheck = await fetch(`${WHISPER_API_URL}/v1/models`, {
+      method: "GET",
+      signal: AbortSignal.timeout(3000),
+    }).catch(() => null);
+
+    if (modelsCheck && modelsCheck.ok) {
+      console.log("[Transcribe] Detected LFM/llama.cpp server (has /v1/models endpoint)");
+      return transcribeLFM(audioBase64);
+    }
+
+    // Try to detect Whisper.cpp server by checking /health endpoint
+    const healthCheck = await fetch(`${WHISPER_API_URL}/health`, {
+      method: "GET",
+      signal: AbortSignal.timeout(3000),
+    }).catch(() => null);
+
+    if (healthCheck && healthCheck.ok) {
+      console.log("[Transcribe] Detected Whisper.cpp server (has /health endpoint)");
+      return transcribeWhisperCpp(audioBase64);
+    }
+
+    // Default to LFM since that's what the user is setting up
+    console.log("[Transcribe] Could not detect API type, defaulting to LFM");
+    return transcribeLFM(audioBase64);
+  } catch (error) {
+    console.error("[Transcribe] Error during API detection:", error);
+    // Default to LFM
+    return transcribeLFM(audioBase64);
   }
 }
 

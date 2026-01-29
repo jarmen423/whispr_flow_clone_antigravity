@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Using llama.cpp set up 
+~/liquid-audio-demo/ director
+from ~/liquid-audio-demo/ start llama-liquid-audio-server (shutdown whisper.cpp server) @ same ip and port as shut down whisper.cpp server
+
+```bash
+./runner/llama-liquid-audio-server -m LFM2.5-Audio-1.5B-Q4_0.gguf -mm mmproj-LFM2.5-Audio-1.5B-Q4_0.gguf -mv 
+vocoder-LFM2.5-Audio-1.5B-Q4_0.gguf --tts-speaker-file tokenizer-LFM2.5-Audio-1.5B-Q4_0.gguf --host 100.111.169.60 --port 8888
+```
 ## Project Overview
 
 LocalFlow is a voice dictation system that transcribes speech to text and refines it using AI. The system supports three processing modes:
