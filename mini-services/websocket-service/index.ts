@@ -155,13 +155,26 @@ async function processAudio(
       processingTime,
     };
 
-    if (source === "mobile") {
-      // For mobile: broadcast to all desktop agents for pasting
+    // Send result back to sender
+    socket.emit("dictation_result", resultPayload);
+
+    // Broadcast to desktop agents for pasting (if any)
+    if (source === "mobile" || source === "web") {
       agentNamespace.emit("dictation_result", resultPayload);
       console.log(`[WS] Broadcast result to ${connectedAgents.size} agent(s)`);
-    } else {
-      // For agent: send back to the requesting agent
-      socket.emit("dictation_result", resultPayload);
+    }
+
+    // Broadcast to registered receivers (Android/Chromebook apps)
+    if (registeredReceivers.size > 0) {
+      for (const [id, receiverSocket] of registeredReceivers) {
+        receiverSocket.emit("paste_text", {
+          text: refinedText,
+          originalText: transcribeData.text,
+          wordCount: transcribeData.wordCount,
+          timestamp: Date.now(),
+        });
+      }
+      console.log(`[WS] Broadcast result to ${registeredReceivers.size} receiver(s)`);
     }
 
     // Broadcast to UI
@@ -187,11 +200,12 @@ async function processAudio(
       processingTime: Date.now() - startTime,
     };
 
-    if (source === "mobile") {
-      // Broadcast error to agents too
-      agentNamespace.emit("dictation_result", errorPayload);
-    } else {
-      socket.emit("dictation_result", errorPayload);
+    socket.emit("dictation_result", errorPayload);
+    
+    // Also broadcast error to agents and receivers
+    agentNamespace.emit("dictation_result", errorPayload);
+    for (const [id, receiverSocket] of registeredReceivers) {
+      receiverSocket.emit("error", { message: error instanceof Error ? error.message : "Unknown error" });
     }
   }
 }
@@ -363,6 +377,88 @@ mobileNamespace.on("connection", (socket: Socket) => {
   });
 });
 
+// Web namespace handlers (for browser-based web UI)
+const webNamespace = io.of("/web");
+
+webNamespace.on("connection", (socket: Socket) => {
+  const webId = socket.id;
+  console.log(`[WS] Web client connected: ${webId}`);
+
+  // Send confirmation
+  socket.emit("connection_confirmed", {
+    type: "connection_confirmed",
+    serverTime: Date.now(),
+  });
+
+  // Handle recording started notification
+  socket.on("recording_started", (data: { timestamp: number }) => {
+    broadcastToUI({
+      type: "recording_started",
+      timestamp: data.timestamp,
+      source: "web",
+    });
+
+    console.log(`[WS] Web ${webId} started recording`);
+  });
+
+  // Handle process audio from web UI
+  socket.on("process_audio", async (message: ProcessAudioMessage) => {
+    console.log(`[WS] Web ${webId} sent audio for processing`);
+
+    // Check if any agents are connected
+    if (connectedAgents.size === 0) {
+      socket.emit("error", {
+        type: "error",
+        message: "No desktop agents connected to receive the result",
+      });
+      console.log(`[WS] Warning: Web sent audio but no agents connected`);
+      return;
+    }
+
+    // Process audio and broadcast result to all agents
+    await processAudio(socket, message, "mobile"); // Use "mobile" source since behavior is identical
+  });
+
+  // Handle disconnect
+  socket.on("disconnect", (reason: string) => {
+    console.log(`[WS] Web client disconnected: ${webId}, reason: ${reason}`);
+  });
+});
+
+// Receiver namespace handlers (for Android/Chromebook receiver apps)
+const receiverNamespace = io.of("/receiver");
+const registeredReceivers = new Map<string, Socket>();
+
+receiverNamespace.on("connection", (socket: Socket) => {
+  const receiverId = socket.id;
+  console.log(`[WS] Receiver connected: ${receiverId}`);
+
+  // Send confirmation
+  socket.emit("connection_confirmed", {
+    type: "connection_confirmed",
+    serverTime: Date.now(),
+  });
+
+  // Handle receiver registration
+  socket.on("register", (deviceInfo: { id: string; name: string; type: string }) => {
+    console.log(`[WS] Receiver registered: ${deviceInfo.name} (${deviceInfo.id})`);
+    registeredReceivers.set(deviceInfo.id, socket);
+    socket.data.deviceInfo = deviceInfo;
+  });
+
+  // Handle disconnect
+  socket.on("disconnect", (reason: string) => {
+    console.log(`[WS] Receiver disconnected: ${receiverId}, reason: ${reason}`);
+    // Remove from registered receivers
+    for (const [id, sock] of registeredReceivers) {
+      if (sock.id === receiverId) {
+        registeredReceivers.delete(id);
+        break;
+      }
+    }
+  });
+});
+
 // Stale connection detection
 setInterval(() => {
   const now = Date.now();
@@ -383,7 +479,7 @@ httpServer.listen(PORT, () => {
 ║                  LocalFlow WebSocket Service                ║
 ╠════════════════════════════════════════════════════════════╣
 ║  Port:        ${PORT.toString().padEnd(44)}║
-║  Namespaces:  /agent, /ui, /mobile                         ║
+║  Namespaces:  /agent, /ui, /mobile, /web, /receiver        ║
 ║  Origins:     ${ALLOWED_ORIGINS.join(", ").substring(0, 44).padEnd(44)}║
 ╚════════════════════════════════════════════════════════════╝
   `);

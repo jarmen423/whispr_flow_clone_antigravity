@@ -16,8 +16,11 @@ import {
   Download,
   History,
   Trash2,
+  Monitor,
+  Globe,
 } from "lucide-react";
 import { toast } from "sonner";
+import { io, Socket } from "socket.io-client";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,6 +44,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useWebSocket } from "@/hooks/use-websocket";
+import { ApiKeyInput } from "@/components/api-key-input";
 import {
   cn,
   formatDuration,
@@ -56,6 +60,8 @@ import {
   type DictationItem,
   defaultSettings,
 } from "@/lib/utils";
+
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "http://localhost:3002";
 
 export default function LocalFlowPage() {
   // State
@@ -80,8 +86,110 @@ export default function LocalFlowPage() {
   const animationRef = useRef<number | undefined>(undefined);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // WebSocket
+  // WebSocket (for UI updates and settings)
   const { status, liveActivities, sendSettings } = useWebSocket();
+  
+  // WebSocket for sending audio to agent (like mobile PWA)
+  const [webSocket, setWebSocket] = useState<Socket | null>(null);
+  const [webSocketConnected, setWebSocketConnected] = useState(false);
+  const [useAgentPaste, setUseAgentPaste] = useState(true); // Toggle between agent paste vs HTTP
+  
+  // Refs to avoid dependency issues in useEffect
+  const recordingTimeRef = useRef(recordingTime);
+  const settingsRef = useRef(settings);
+  
+  useEffect(() => {
+    recordingTimeRef.current = recordingTime;
+  }, [recordingTime]);
+  
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+  
+  // Connect to /web namespace for sending audio
+  useEffect(() => {
+    const socket = io(`${WS_URL}/web`, {
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: Infinity,
+    });
+
+    socket.on("connect", () => {
+      console.log("[Web] Connected to /web namespace");
+      setWebSocketConnected(true);
+    });
+
+    socket.on("disconnect", () => {
+      console.log("[Web] Disconnected from /web namespace");
+      setWebSocketConnected(false);
+    });
+
+    socket.on("connect_error", (error) => {
+      console.error("[Web] Connection error:", error);
+      setWebSocketConnected(false);
+    });
+
+    socket.on("dictation_result", (data: {
+      success: boolean;
+      originalText?: string;
+      refinedText?: string;
+      wordCount?: number;
+      error?: string;
+    }) => {
+      setIsProcessing(false);
+      
+      if (data.success && data.refinedText) {
+        setOriginalText(data.originalText || "");
+        setRefinedText(data.refinedText);
+        
+        // Add to history using functional update to avoid dependency issues
+        setHistory((prevHistory) => {
+          const currentSettings = settingsRef.current;
+          const newItem: DictationItem = {
+            id: generateId(),
+            originalText: data.originalText || "",
+            refinedText: data.refinedText,
+            timestamp: Date.now(),
+            duration: recordingTimeRef.current,
+            mode: currentSettings.refinementMode,
+            processingMode: currentSettings.processingMode,
+          };
+          const updated = [...prevHistory, newItem];
+          saveHistory(updated);
+          return updated;
+        });
+        
+        toast.success(`Processed: ${data.wordCount} words (pasted to active app)`);
+        
+        if (settingsRef.current.soundEnabled) {
+          const audioCtx = new AudioContext();
+          const oscillator = audioCtx.createOscillator();
+          const gainNode = audioCtx.createGain();
+          oscillator.connect(gainNode);
+          gainNode.connect(audioCtx.destination);
+          oscillator.frequency.value = 1320;
+          gainNode.gain.value = 0.1;
+          oscillator.start();
+          setTimeout(() => oscillator.stop(), 150);
+        }
+      } else {
+        toast.error(data.error || "Processing failed");
+      }
+    });
+
+    socket.on("error", (data: { message: string }) => {
+      setIsProcessing(false);
+      toast.error(data.message);
+    });
+
+    setWebSocket(socket);
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
 
   // Load settings and history on mount
   useEffect(() => {
@@ -147,6 +255,12 @@ export default function LocalFlowPage() {
       // Start audio level visualization
       updateAudioLevel();
 
+      // Notify WebSocket that recording started
+      if (webSocket?.connected && useAgentPaste) {
+        webSocket.emit("recording_started", { timestamp: Date.now() });
+        recordingTimeRef.current = 0; // Reset ref
+      }
+
       if (settings.soundEnabled) {
         // Play start sound
         const audioCtx = new AudioContext();
@@ -193,8 +307,44 @@ export default function LocalFlowPage() {
     });
   };
 
-  // Process recording
-  const processRecording = async (audioBlob: Blob) => {
+  // Process recording via WebSocket (agent paste mode)
+  const processRecordingWebSocket = async (audioBlob: Blob) => {
+    if (!webSocket?.connected) {
+      toast.error("Not connected to agent. Using HTTP mode instead.");
+      await processRecordingHTTP(audioBlob);
+      return;
+    }
+
+    if (!status.agentOnline) {
+      toast.error("Desktop agent is not running. Start it to enable auto-paste.");
+      await processRecordingHTTP(audioBlob);
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      const audioBase64 = await blobToBase64(audioBlob);
+
+      // Send via WebSocket to be processed by agent
+      webSocket.emit("process_audio", {
+        type: "process_audio",
+        audio: audioBase64,
+        mode: settings.refinementMode,
+        processingMode: settings.processingMode,
+        timestamp: Date.now(),
+      });
+
+      // Result will come back via socket.on("dictation_result")
+    } catch (error) {
+      console.error("WebSocket processing error:", error);
+      toast.error(error instanceof Error ? error.message : "Processing failed");
+      setIsProcessing(false);
+    }
+  };
+
+  // Process recording via HTTP (original mode - no agent needed)
+  const processRecordingHTTP = async (audioBlob: Blob) => {
     if (audioBlob.size === 0) {
       toast.error("No audio recorded");
       return;
@@ -204,10 +354,8 @@ export default function LocalFlowPage() {
     const startTime = Date.now();
 
     try {
-      // Convert to base64
       const audioBase64 = await blobToBase64(audioBlob);
 
-      // Step 1: Transcribe
       const transcribeResponse = await fetch("/api/dictation/transcribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -225,7 +373,6 @@ export default function LocalFlowPage() {
 
       setOriginalText(transcribeData.text);
 
-      // Step 2: Refine (skip for raw mode)
       let finalText = transcribeData.text;
 
       if (settings.refinementMode !== "raw") {
@@ -250,13 +397,11 @@ export default function LocalFlowPage() {
 
       setRefinedText(finalText);
 
-      // Auto-copy to clipboard
       if (settings.autoCopy) {
         await navigator.clipboard.writeText(finalText);
         toast.success("Text copied to clipboard");
       }
 
-      // Add to history
       const newItem: DictationItem = {
         id: generateId(),
         originalText: transcribeData.text,
@@ -275,7 +420,6 @@ export default function LocalFlowPage() {
       toast.success(`Processed in ${processingTime}s`);
 
       if (settings.soundEnabled) {
-        // Play success sound
         const audioCtx = new AudioContext();
         const oscillator = audioCtx.createOscillator();
         const gainNode = audioCtx.createGain();
@@ -291,6 +435,15 @@ export default function LocalFlowPage() {
       toast.error(error instanceof Error ? error.message : "Processing failed");
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  // Main process recording function - routes to appropriate handler
+  const processRecording = async (audioBlob: Blob) => {
+    if (useAgentPaste && webSocketConnected && status.agentOnline) {
+      await processRecordingWebSocket(audioBlob);
+    } else {
+      await processRecordingHTTP(audioBlob);
     }
   };
 
@@ -373,6 +526,26 @@ export default function LocalFlowPage() {
               </span>
             </div>
 
+            {/* Paste Mode Indicator */}
+            <div 
+              className={cn(
+                "flex items-center gap-2 rounded-full px-3 py-1.5 text-sm transition-colors",
+                useAgentPaste && status.agentOnline
+                  ? "bg-blue-500/10 text-blue-600"
+                  : "bg-muted/50 text-muted-foreground"
+              )}
+              title={useAgentPaste && status.agentOnline ? "Auto-paste enabled" : "Browser copy mode"}
+            >
+              {useAgentPaste && status.agentOnline ? (
+                <Monitor className="h-4 w-4" />
+              ) : (
+                <Globe className="h-4 w-4" />
+              )}
+              <span className="hidden sm:inline">
+                {useAgentPaste && status.agentOnline ? "Auto-paste" : "Browser"}
+              </span>
+            </div>
+
             {/* Settings */}
             <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
               <DialogTrigger asChild>
@@ -388,7 +561,26 @@ export default function LocalFlowPage() {
                   </DialogDescription>
                 </DialogHeader>
 
+                {/* Mode Explanation */}
+                <Alert className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+                  <Monitor className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <AlertTitle className="text-blue-800 dark:text-blue-200">
+                    How it works
+                  </AlertTitle>
+                  <AlertDescription className="text-blue-700 dark:text-blue-300 text-sm">
+                    <p className="mb-2">
+                      <strong>Auto-paste mode:</strong> Results are automatically pasted into whatever application you're actively using (VS Code, Word, Slack, etc.). This requires the desktop agent to be running.
+                    </p>
+                    <p>
+                      <strong>Browser mode:</strong> Results appear on this page and are copied to your clipboard. You manually paste where needed. Works without the desktop agent.
+                    </p>
+                  </AlertDescription>
+                </Alert>
+
                 <div className="space-y-6 py-4">
+                  {/* API Key */}
+                  <ApiKeyInput />
+
                   {/* Processing Mode */}
                   <div className="space-y-2">
                     <Label>Processing Mode</Label>
@@ -494,6 +686,26 @@ export default function LocalFlowPage() {
                         onCheckedChange={(checked) =>
                           updateSettings({ soundEnabled: checked })
                         }
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="flex items-center gap-2">
+                          <Monitor className="h-3.5 w-3.5" />
+                          Auto-paste to active app
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          {status.agentOnline 
+                            ? "Results will be pasted to your active application"
+                            : "Requires desktop agent to be running"
+                          }
+                        </p>
+                      </div>
+                      <Switch
+                        checked={useAgentPaste}
+                        onCheckedChange={(checked) => setUseAgentPaste(checked)}
+                        disabled={!status.agentOnline}
                       />
                     </div>
                   </div>

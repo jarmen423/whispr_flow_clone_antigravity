@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LocalFlow - Voice Dictation</title>
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            padding: 20px;
+        }
+        
+        .container {
+            width: 100%;
+            max-width: 500px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2rem;
+            margin-bottom: 5px;
+            background: linear-gradient(90deg, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .header p {
+            color: #94a3b8;
+            font-size: 0.9rem;
+        }
+        
+        .status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 20px;
+            font-size: 0.85rem;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ef4444;
+            transition: background 0.3s;
+        }
+        
+        .status-dot.connected {
+            background: #22c55e;
+            box-shadow: 0 0 8px #22c55e;
+        }
+        
+        .record-button {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: white;
+            font-size: 3rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 30px;
+            box-shadow: 0 10px 40px rgba(59, 130, 246, 0.4);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .record-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 15px 50px rgba(59, 130, 246, 0.5);
+        }
+        
+        .record-button:active {
+            transform: scale(0.95);
+        }
+        
+        .record-button.recording {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            box-shadow: 0 10px 40px rgba(239, 68, 68, 0.4);
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 10px 40px rgba(239, 68, 68, 0.4); }
+            50% { box-shadow: 0 10px 60px rgba(239, 68, 68, 0.6); }
+        }
+        
+        .record-button::before {
+            content: '';
+            position: absolute;
+            inset: -10px;
+            border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.1);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .record-button.recording::before {
+            opacity: 1;
+            animation: ripple 1.5s infinite;
+        }
+        
+        @keyframes ripple {
+            0% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(1.2); opacity: 0; }
+        }
+        
+        .recording-info {
+            text-align: center;
+            margin-bottom: 20px;
+            min-height: 60px;
+        }
+        
+        .timer {
+            font-size: 2.5rem;
+            font-weight: 300;
+            font-variant-numeric: tabular-nums;
+            color: #ef4444;
+        }
+        
+        .recording-text {
+            color: #94a3b8;
+            font-size: 0.9rem;
+            margin-top: 5px;
+        }
+        
+        .settings {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .setting-row:last-child {
+            margin-bottom: 0;
+        }
+        
+        .setting-label {
+            font-size: 0.9rem;
+            color: #cbd5e1;
+        }
+        
+        select {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+        
+        select option {
+            background: #1e293b;
+        }
+        
+        .result {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 20px;
+            min-height: 100px;
+        }
+        
+        .result-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #64748b;
+            margin-bottom: 10px;
+        }
+        
+        .result-text {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            color: #f1f5f9;
+            min-height: 50px;
+        }
+        
+        .result-text:empty::before {
+            content: 'Your transcribed text will appear here...';
+            color: #64748b;
+            font-style: italic;
+        }
+        
+        .error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: #fca5a5;
+            display: none;
+        }
+        
+        .error.show {
+            display: block;
+        }
+        
+        .info {
+            text-align: center;
+            color: #64748b;
+            font-size: 0.8rem;
+            margin-top: 20px;
+        }
+        
+        .spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #60a5fa;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        .spinner.show {
+            display: block;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⚡ LocalFlow</h1>
+            <p>Voice dictation powered by AI</p>
+        </div>
+        
+        <div class="status">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">Connecting...</span>
+        </div>
+        
+        <div class="error" id="errorBox"></div>
+        
+        <button class="record-button" id="recordBtn">
+            🎤
+        </button>
+        
+        <div class="recording-info">
+            <div class="timer" id="timer" style="display: none;">0:00</div>
+            <div class="recording-text" id="recordingText"></div>
+            <div class="spinner" id="spinner"></div>
+        </div>
+        
+        <div class="settings">
+            <div class="setting-row">
+                <span class="setting-label">Mode</span>
+                <select id="modeSelect">
+                    <option value="developer">Developer</option>
+                    <option value="concise">Concise</option>
+                    <option value="professional">Professional</option>
+                    <option value="raw">Raw (No AI)</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="result">
+            <div class="result-label">Last Result</div>
+            <div class="result-text" id="resultText"></div>
+        </div>
+        
+        <div class="info">
+            Press and hold the button to record • Release to transcribe<br>
+            Text will be automatically pasted to your active application
+        </div>
+    </div>
+
+    <script>
+        // WebSocket connection
+        const socket = io('ws://localhost:3002');
+        
+        // DOM elements
+        const recordBtn = document.getElementById('recordBtn');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const timer = document.getElementById('timer');
+        const recordingText = document.getElementById('recordingText');
+        const spinner = document.getElementById('spinner');
+        const resultText = document.getElementById('resultText');
+        const errorBox = document.getElementById('errorBox');
+        const modeSelect = document.getElementById('modeSelect');
+        
+        // State
+        let isRecording = false;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let recordingStartTime = null;
+        let timerInterval = null;
+        
+        // WebSocket events
+        socket.on('connect', () => {
+            console.log('Connected to LocalFlow agent');
+            statusDot.classList.add('connected');
+            statusText.textContent = 'Connected';
+            hideError();
+        });
+        
+        socket.on('disconnect', () => {
+            console.log('Disconnected from LocalFlow agent');
+            statusDot.classList.remove('connected');
+            statusText.textContent = 'Disconnected';
+        });
+        
+        socket.on('connect_error', (error) => {
+            console.error('Connection error:', error);
+            statusText.textContent = 'Connection failed';
+            showError('Cannot connect to LocalFlow agent. Make sure it\'s running on your computer.');
+        });
+        
+        socket.on('dictation_result', (data) => {
+            spinner.classList.remove('show');
+            recordingText.textContent = '';
+            
+            if (data.success) {
+                resultText.textContent = data.refinedText;
+                recordingText.textContent = `✓ ${data.wordCount} words processed`;
+            } else {
+                showError(data.error || 'Processing failed');
+            }
+        });
+        
+        // Recording functions
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        sampleRate: 16000,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+                
+                mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: 'audio/webm;codecs=opus'
+                });
+                
+                audioChunks = [];
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
+                };
+                
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    await sendAudio(audioBlob);
+                    
+                    // Stop all tracks
+                    stream.getTracks().forEach(track => track.stop());
+                };
+                
+                mediaRecorder.start(100);
+                isRecording = true;
+                recordingStartTime = Date.now();
+                
+                // Update UI
+                recordBtn.classList.add('recording');
+                timer.style.display = 'block';
+                recordingText.textContent = 'Recording...';
+                hideError();
+                
+                // Start timer
+                timerInterval = setInterval(updateTimer, 100);
+                
+                // Notify server
+                socket.emit('recording_started', { timestamp: Date.now() });
+                
+            } catch (error) {
+                console.error('Failed to start recording:', error);
+                showError('Cannot access microphone. Please allow microphone permission.');
+                isRecording = false;
+            }
+        }
+        
+        function stopRecording() {
+            if (!isRecording || !mediaRecorder) return;
+            
+            isRecording = false;
+            mediaRecorder.stop();
+            
+            // Update UI
+            recordBtn.classList.remove('recording');
+            timer.style.display = 'none';
+            recordingText.textContent = 'Processing...';
+            spinner.classList.add('show');
+            
+            // Clear timer
+            clearInterval(timerInterval);
+            timer.textContent = '0:00';
+        }
+        
+        async function sendAudio(audioBlob) {
+            try {
+                // Convert blob to base64
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const base64 = reader.result.split(',')[1];
+                    
+                    socket.emit('process_audio', {
+                        type: 'process_audio',
+                        audio: base64,
+                        mode: modeSelect.value,
+                        timestamp: Date.now()
+                    });
+                };
+                reader.readAsDataURL(audioBlob);
+                
+            } catch (error) {
+                console.error('Failed to send audio:', error);
+                showError('Failed to send audio to agent');
+                spinner.classList.remove('show');
+            }
+        }
+        
+        function updateTimer() {
+            const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+            const mins = Math.floor(elapsed / 60);
+            const secs = elapsed % 60;
+            timer.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+        
+        function showError(message) {
+            errorBox.textContent = message;
+            errorBox.classList.add('show');
+        }
+        
+        function hideError() {
+            errorBox.classList.remove('show');
+        }
+        
+        // Button events - hold to record
+        recordBtn.addEventListener('mousedown', startRecording);
+        recordBtn.addEventListener('mouseup', stopRecording);
+        recordBtn.addEventListener('mouseleave', () => {
+            if (isRecording) stopRecording();
+        });
+        
+        // Touch events for mobile
+        recordBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startRecording();
+        });
+        recordBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            stopRecording();
+        });
+        
+        // Keyboard shortcut - Space to toggle
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && !e.repeat && e.target.tagName !== 'SELECT') {
+                e.preventDefault();
+                if (!isRecording) {
+                    startRecording();
+                }
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'Space' && isRecording) {
+                e.preventDefault();
+                stopRecording();
+            }
+        });
+    </script>
+</body>
+</html>
