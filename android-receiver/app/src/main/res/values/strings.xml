@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">LocalFlow Receiver</string>
+    <string name="accessibility_service_description">Allows LocalFlow Receiver to automatically paste text into input fields. Enable this to have dictated text appear automatically in any app you\'re using.</string>
+</resources>
