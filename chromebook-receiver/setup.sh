@@ -10,7 +10,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 echo "📦 Installing dependencies..."
 sudo apt-get update
 sudo apt-get install -y xclip python3-pip
-pip3 install webscripts
+pip3 install websockets
 
 # Create directories
 mkdir -p "$HOME/.local/share/applications"

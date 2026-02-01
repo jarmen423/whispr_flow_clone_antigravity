@@ -11,6 +11,7 @@ import os
 import signal
 import sys
 import logging
+import logging.handlers
 from pathlib import Path
 from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -30,7 +31,7 @@ WS_PORT = 3002
 HTTP_PORT = 3005
 CONNECTED_CLIENTS = set()
 
-# Setup logging to file
+# Setup logging directory
 LOG_DIR = Path.home() / '.local' / 'share' / 'whispr-flow'
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / 'receiver.log'
@@ -38,24 +39,33 @@ LOG_FILE = LOG_DIR / 'receiver.log'
 # Determine if running in debug mode (show output) or silent mode
 DEBUG_MODE = '--debug' in sys.argv or '-d' in sys.argv
 
-# Setup logging
+# Setup logging with rotation (max 5MB, keep 3 backups)
+MAX_LOG_SIZE = 5 * 1024 * 1024  # 5MB
+MAX_BACKUPS = 3
+
+# Create formatter
+formatter = logging.Formatter('%(asctime)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+
+# Rotating file handler (always active)
+file_handler = logging.handlers.RotatingFileHandler(
+    LOG_FILE, 
+    maxBytes=MAX_LOG_SIZE,
+    backupCount=MAX_BACKUPS
+)
+file_handler.setFormatter(formatter)
+
+# Setup logger
+handlers = [file_handler]
 if DEBUG_MODE:
-    # Debug mode: log to console AND file
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(message)s',
-        handlers=[
-            logging.FileHandler(LOG_FILE),
-            logging.StreamHandler(sys.stdout)
-        ]
-    )
-else:
-    # Silent mode: log only to file
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(message)s',
-        handlers=[logging.FileHandler(LOG_FILE)]
-    )
+    # Also log to console in debug mode
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
+    handlers.append(console_handler)
+
+logging.basicConfig(
+    level=logging.INFO,
+    handlers=handlers
+)
 
 logger = logging.getLogger(__name__)
 

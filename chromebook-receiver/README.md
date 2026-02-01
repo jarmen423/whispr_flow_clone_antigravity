@@ -116,6 +116,13 @@ chmod +x ~/chromebook-receiver/*.py
 ~/.local/share/whispr-flow/receiver.log
 ```
 
+Logs rotate automatically when they reach 5MB, keeping the last 3 backups:
+- `receiver.log` (current)
+- `receiver.log.1` (previous)
+- `receiver.log.2` (oldest)
+
+Maximum disk usage: ~20MB for logs.
+
 ---
 
 ## 🔄 Auto-Start (Optional)
