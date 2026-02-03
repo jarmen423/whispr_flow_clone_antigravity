@@ -12,13 +12,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { IOSInstallPrompt } from "./ios-install-prompt";
 
-// Firebase configuration for cloud relay
-// Get these values from your Firebase project settings
+// Pre-configured Firebase for cloud relay (matches Chrome extension)
 const FIREBASE_CONFIG = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || '',
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || '',
-  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL || '',
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || '',
+  apiKey: "AIzaSyB8UiwKe0YeQcuLiB8mIwcBlPlb_6qb9Q4",
+  authDomain: "whispr-chromebook.firebaseapp.com",
+  databaseURL: "https://whispr-chromebook-default-rtdb.firebaseio.com/",
+  projectId: "whispr-chromebook",
+  storageBucket: "whispr-chromebook.firebasestorage.app",
+  messagingSenderId: "920349339998",
+  appId: "1:920349339998:web:35e979d9033ed411f39fcf"
 };
 
 interface ProcessedResult {
@@ -31,17 +33,15 @@ export default function MobilePage() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioLevel, setAudioLevel] = useState(0);
-  
+
   // Settings
   const [apiKey, setApiKey] = useState("");
   const [receiverIp, setReceiverIp] = useState("");
   const [mode, setMode] = useState<"developer" | "concise" | "professional" | "raw">("developer");
   const [showSettings, setShowSettings] = useState(false);
-  const [firebaseApiKey, setFirebaseApiKey] = useState("");
-  const [firebaseDbUrl, setFirebaseDbUrl] = useState("");
-  const [useCloudRelay, setUseCloudRelay] = useState(false);
+  const [useCloudRelay, setUseCloudRelay] = useState(true); // Default ON for easy setup
   const [deviceId, setDeviceId] = useState("");
-  
+
   // Status
   const [status, setStatus] = useState<"idle" | "recording" | "processing" | "sending" | "done" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
@@ -58,16 +58,12 @@ export default function MobilePage() {
     const savedKey = localStorage.getItem("localflow-groq-key");
     const savedIp = localStorage.getItem("localflow-receiver-ip");
     const savedMode = localStorage.getItem("localflow-mode") as typeof mode;
-    const savedFirebaseKey = localStorage.getItem("localflow-firebase-key");
-    const savedFirebaseDbUrl = localStorage.getItem("localflow-firebase-db-url");
     const savedUseCloudRelay = localStorage.getItem("localflow-use-cloud-relay");
     const savedDeviceId = localStorage.getItem("localflow-device-id");
     if (savedKey) setApiKey(savedKey);
     if (savedIp) setReceiverIp(savedIp);
     if (savedMode) setMode(savedMode);
-    if (savedFirebaseKey) setFirebaseApiKey(savedFirebaseKey);
-    if (savedFirebaseDbUrl) setFirebaseDbUrl(savedFirebaseDbUrl);
-    if (savedUseCloudRelay) setUseCloudRelay(savedUseCloudRelay === "true");
+    if (savedUseCloudRelay !== null) setUseCloudRelay(savedUseCloudRelay === "true");
     if (savedDeviceId) {
       setDeviceId(savedDeviceId);
     } else {
@@ -83,8 +79,6 @@ export default function MobilePage() {
     localStorage.setItem("localflow-groq-key", apiKey);
     localStorage.setItem("localflow-receiver-ip", receiverIp);
     localStorage.setItem("localflow-mode", mode);
-    localStorage.setItem("localflow-firebase-key", firebaseApiKey);
-    localStorage.setItem("localflow-firebase-db-url", firebaseDbUrl);
     localStorage.setItem("localflow-use-cloud-relay", useCloudRelay.toString());
     localStorage.setItem("localflow-device-id", deviceId);
     setShowSettings(false);
@@ -136,7 +130,7 @@ export default function MobilePage() {
       });
 
       audioChunksRef.current = [];
-      
+
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
@@ -146,14 +140,14 @@ export default function MobilePage() {
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
         await processAudio(audioBlob);
-        
+
         // Stop all tracks
         stream.getTracks().forEach(track => track.stop());
       };
 
       mediaRecorderRef.current = mediaRecorder;
       mediaRecorder.start(100);
-      
+
       setIsRecording(true);
       setStatus("recording");
       setErrorMessage("");
@@ -162,8 +156,8 @@ export default function MobilePage() {
     } catch (error) {
       console.error("[Mobile] Failed to start recording:", error);
       setErrorMessage(
-        error instanceof Error 
-          ? error.message 
+        error instanceof Error
+          ? error.message
           : "Failed to access microphone"
       );
     }
@@ -190,7 +184,7 @@ export default function MobilePage() {
     try {
       // Step 1: Convert to WAV format (Groq prefers WAV)
       const wavBlob = await convertToWav(audioBlob);
-      
+
       // Step 2: Call Groq API directly from browser!
       const formData = new FormData();
       formData.append("file", wavBlob, "audio.wav");
@@ -198,7 +192,7 @@ export default function MobilePage() {
       formData.append("response_format", "json");
 
       console.log("[Mobile] Calling Groq API...");
-      
+
       const transcribeResponse = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
         method: "POST",
         headers: {
@@ -219,10 +213,10 @@ export default function MobilePage() {
 
       // Step 3: Refine text (if not raw mode)
       let finalText = originalText;
-      
+
       if (mode !== "raw") {
         setStatus("processing");
-        
+
         const systemPrompts = {
           developer: "You are a dictation correction tool for developers. Clean up grammar, remove filler words, format technical terms correctly. Output ONLY the cleaned text.",
           concise: "Make this text concise. Remove filler words. Output ONLY the result.",
@@ -253,14 +247,14 @@ export default function MobilePage() {
       }
 
       const wordCount = finalText.split(/\s+/).filter(w => w.length > 0).length;
-      
+
       setLastResult({ text: finalText, wordCount });
-      
+
       // Step 4: Send to Android receiver (if configured)
       if (receiverIp) {
         await sendToReceiver(finalText, wordCount);
       }
-      
+
       setStatus("done");
 
     } catch (error) {
@@ -273,17 +267,10 @@ export default function MobilePage() {
   const sendToReceiver = async (text: string, wordCount: number) => {
     setStatus("sending");
 
-    // Use Firebase cloud relay if configured
-    if (useCloudRelay && firebaseApiKey && firebaseDbUrl) {
+    // Always send to Firebase cloud relay (pre-configured)
+    if (useCloudRelay && deviceId) {
       try {
-        const firebaseConfig = {
-          apiKey: firebaseApiKey,
-          databaseURL: firebaseDbUrl,
-          projectId: 'whispr-flow',
-          authDomain: `${firebaseApiKey?.split(':')[0]}.firebaseapp.com`,
-        };
-
-        const app = initializeApp(firebaseConfig, 'whispr-mobile');
+        const app = initializeApp(FIREBASE_CONFIG, 'whispr-mobile-' + Date.now());
         const db = getDatabase(app);
 
         // Write to a path based on device ID
@@ -353,7 +340,7 @@ export default function MobilePage() {
 
   const copyToClipboard = async () => {
     if (!lastResult) return;
-    
+
     try {
       await navigator.clipboard.writeText(lastResult.text);
       setCopied(true);
@@ -380,7 +367,7 @@ export default function MobilePage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
       <IOSInstallPrompt />
-      
+
       <div className="max-w-md mx-auto space-y-6">
         {/* Header */}
         <div className="text-center pt-4">
@@ -409,8 +396,8 @@ export default function MobilePage() {
                 className={`
                   relative w-32 h-32 rounded-full flex items-center justify-center
                   transition-all duration-300 ease-out
-                  ${isRecording 
-                    ? "bg-red-500 shadow-red-500/50 shadow-2xl scale-95" 
+                  ${isRecording
+                    ? "bg-red-500 shadow-red-500/50 shadow-2xl scale-95"
                     : "bg-gradient-to-br from-blue-500 to-blue-600 shadow-blue-500/50 shadow-2xl hover:scale-105 active:scale-95"
                   }
                   ${(status === "processing" || status === "sending") ? "opacity-50 cursor-not-allowed" : ""}
@@ -421,7 +408,7 @@ export default function MobilePage() {
                 ) : (
                   <Mic className="w-12 h-12 text-white" />
                 )}
-                
+
                 {isRecording && (
                   <>
                     <span className="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-75" />
@@ -484,7 +471,7 @@ export default function MobilePage() {
 
         {/* Settings */}
         <Card className="border-0 shadow-md">
-          <CardHeader 
+          <CardHeader
             className="pb-3 cursor-pointer"
             onClick={() => setShowSettings(!showSettings)}
           >
@@ -498,7 +485,7 @@ export default function MobilePage() {
               </span>
             </div>
           </CardHeader>
-          
+
           {showSettings && (
             <CardContent className="space-y-4 pt-0">
               <div className="space-y-2">
@@ -535,43 +522,19 @@ export default function MobilePage() {
               </div>
 
               {useCloudRelay && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="firebase-key">Firebase API Key</Label>
-                    <Input
-                      id="firebase-key"
-                      type="password"
-                      placeholder="AIza..."
-                      value={firebaseApiKey}
-                      onChange={(e) => setFirebaseApiKey(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="firebase-db-url">Firebase Database URL</Label>
-                    <Input
-                      id="firebase-db-url"
-                      type="text"
-                      placeholder="https://your-project.firebaseio.com"
-                      value={firebaseDbUrl}
-                      onChange={(e) => setFirebaseDbUrl(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="device-id">Device ID (share with Chromebook)</Label>
-                    <Input
-                      id="device-id"
-                      type="text"
-                      value={deviceId}
-                      readOnly
-                      className="bg-slate-100"
-                    />
-                    <p className="text-xs text-slate-400">
-                      Enter this ID in the Chrome extension
-                    </p>
-                  </div>
-                </>
+                <div className="space-y-2">
+                  <Label htmlFor="device-id">Your Device ID</Label>
+                  <Input
+                    id="device-id"
+                    type="text"
+                    value={deviceId}
+                    readOnly
+                    className="bg-slate-100 font-mono text-center"
+                  />
+                  <p className="text-xs text-green-600">
+                    ✓ Firebase pre-configured! Enter this ID in the Chrome extension.
+                  </p>
+                </div>
               )}
 
               {!useCloudRelay && (
@@ -615,9 +578,9 @@ export default function MobilePage() {
         {/* Instructions */}
         <div className="text-center text-xs text-slate-400 space-y-1">
           <p>1. Enter your Groq API key above</p>
-          <p>2. Enable &quot;Cloud Relay&quot; and enter Firebase credentials</p>
-          <p>3. Share your Device ID with Chrome extension</p>
-          <p>4. Record audio - text appears on Chromebook automatically!</p>
+          <p>2. Enable &quot;Cloud Relay&quot; to sync with Chromebook</p>
+          <p>3. Copy your Device ID to the Chrome extension</p>
+          <p>4. Record audio - text appears on Chromebook! 🎉</p>
         </div>
       </div>
     </div>

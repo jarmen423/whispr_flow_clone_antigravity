@@ -2,7 +2,7 @@
   "name": "LocalFlow Mobile",
   "short_name": "LocalFlow",
   "description": "Remote microphone for LocalFlow dictation",
-  "start_url": "/mobile",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#f8fafc",
   "theme_color": "#3b82f6",
@@ -22,6 +22,9 @@
       "purpose": "any maskable"
     }
   ],
-  "categories": ["productivity", "utilities"],
+  "categories": [
+    "productivity",
+    "utilities"
+  ],
   "lang": "en"
 }
