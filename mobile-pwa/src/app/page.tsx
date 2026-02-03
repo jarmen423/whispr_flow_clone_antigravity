@@ -23,6 +23,9 @@ const FIREBASE_CONFIG = {
   appId: "1:920349339998:web:35e979d9033ed411f39fcf"
 };
 
+// Check if Firebase is properly configured
+const isFirebaseConfigured = !!(FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.databaseURL);
+
 interface ProcessedResult {
   text: string;
   wordCount: number;
@@ -246,7 +249,7 @@ export default function MobilePage() {
         }
       }
 
-      const wordCount = finalText.split(/\s+/).filter(w => w.length > 0).length;
+      const wordCount = finalText.split(/\s+/).filter((w: string) => w.length > 0).length;
 
       setLastResult({ text: finalText, wordCount });
 
