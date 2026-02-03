@@ -6,6 +6,17 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { getDatabase, ref, onValue, off } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 
+// Pre-configured Firebase settings (users only need to enter their Device ID)
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyB8UiwKe0YeQcuLiB8mIwcBlPlb_6qb9Q4",
+  authDomain: "whispr-chromebook.firebaseapp.com",
+  databaseURL: "https://whispr-chromebook-default-rtdb.firebaseio.com/",
+  projectId: "whispr-chromebook",
+  storageBucket: "whispr-chromebook.firebasestorage.app",
+  messagingSenderId: "920349339998",
+  appId: "1:920349339998:web:35e979d9033ed411f39fcf"
+};
+
 // State management
 const state = {
   isRunning: false,
@@ -54,8 +65,8 @@ async function autoPaste(text) {
         if (!activeElement) return { success: false, error: 'No active element' };
 
         const isInput = activeElement.tagName === 'INPUT' ||
-                       activeElement.tagName === 'TEXTAREA' ||
-                       activeElement.isContentEditable;
+          activeElement.tagName === 'TEXTAREA' ||
+          activeElement.isContentEditable;
 
         if (!isInput) return { success: false, error: 'Not an input field' };
 
@@ -124,8 +135,9 @@ async function handleTranscription(text, wordCount, deviceId) {
 async function startFirebaseListener() {
   const settings = await getSettings();
 
-  if (!settings.firebaseApiKey || !settings.firebaseDbUrl || !settings.deviceId) {
-    console.log('[Whispr] Firebase not configured');
+  // Only Device ID is required - Firebase config is pre-configured
+  if (!settings.deviceId) {
+    console.log('[Whispr] Device ID not configured');
     state.isRunning = false;
     await chrome.action.setBadgeText({ text: '!' });
     await chrome.action.setBadgeBackgroundColor({ color: '#f59e0b' });
@@ -144,14 +156,8 @@ async function startFirebaseListener() {
   }
 
   try {
-    const firebaseConfig = {
-      apiKey: settings.firebaseApiKey,
-      databaseURL: settings.firebaseDbUrl,
-      projectId: 'whispr-flow',
-      authDomain: `${settings.firebaseApiKey?.split(':')[0]}.firebaseapp.com`,
-    };
-
-    state.firebaseApp = initializeApp(firebaseConfig, 'whispr-extension');
+    // Use pre-configured Firebase settings
+    state.firebaseApp = initializeApp(FIREBASE_CONFIG, 'whispr-extension');
     const db = getDatabase(state.firebaseApp);
 
     const transcriptionRef = ref(db, `transcriptions/${settings.deviceId}`);

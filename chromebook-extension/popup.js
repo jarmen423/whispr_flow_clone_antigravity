@@ -1,5 +1,19 @@
 /**
  * Whispr Flow - Chrome Extension Popup
+ * 
+ * Purpose & Reasoning:
+ *     Manages the popup UI for the Whispr Flow Chrome extension. Handles
+ *     displaying connection status, configuring the Device ID, and toggling
+ *     auto-paste functionality. Firebase credentials are pre-configured,
+ *     so users only need to enter their Device ID from the mobile app.
+ * 
+ * Role in Codebase:
+ *     This script provides the frontend interface for the extension popup,
+ *     communicating with the background service worker via Chrome messaging.
+ * 
+ * Key Technologies/APIs:
+ *     - Chrome Storage API for persisting settings
+ *     - Chrome Runtime Messaging for background communication
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -11,12 +25,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   const autoPasteToggle = document.getElementById('auto-paste-toggle');
   const lastReceivedSection = document.getElementById('last-received-section');
   const lastReceivedText = document.getElementById('last-received-text');
-  const firebaseKeyInput = document.getElementById('firebase-key');
-  const firebaseDbUrlInput = document.getElementById('firebase-db-url');
   const deviceIdInput = document.getElementById('device-id-input');
   const saveBtn = document.getElementById('save-btn');
 
-  // Load current status
+  /**
+   * Load and display the current connection status from the background worker.
+   * 
+   * Extended Description:
+   *     Queries the background service worker for the current connection state,
+   *     device ID, last received transcription, and auto-paste setting. Updates
+   *     the popup UI to reflect the current status.
+   * 
+   * Key Technologies/APIs:
+   *     - Chrome Runtime sendMessage for background communication
+   */
   async function loadStatus() {
     try {
       const response = await chrome.runtime.sendMessage({ action: 'getStatus' });
@@ -26,49 +48,47 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (response.isRunning) {
           statusText.textContent = 'Connected';
           statusDot.className = 'status-dot connected';
-        } else if (response.hasConfig) {
+        } else if (response.deviceId) {
           statusText.textContent = 'Connecting...';
           statusDot.className = 'status-dot warning';
         } else {
-          statusText.textContent = 'Not configured';
+          statusText.textContent = 'Enter Device ID';
           statusDot.className = 'status-dot disconnected';
         }
 
-        // Update device ID
+        // Update device ID display
         if (response.deviceId) {
           deviceIdDisplay.textContent = response.deviceId;
           deviceIdInput.value = response.deviceId;
         }
 
-        // Update auto-paste
+        // Update auto-paste toggle
         autoPasteToggle.checked = response.autoPaste;
 
-        // Update last received
+        // Show last received transcription
         if (response.lastReceived) {
           lastReceivedText.textContent = response.lastReceived.text;
           lastReceivedSection.classList.remove('hidden');
         }
       }
     } catch (err) {
-      console.error('Failed to load status:', err);
+      console.error('[Whispr] Failed to load status:', err);
     }
   }
 
-  // Load saved settings
+  /**
+   * Load saved settings from Chrome storage.
+   * 
+   * Extended Description:
+   *     Retrieves the saved Device ID and auto-paste preference from Chrome's
+   *     local storage API and populates the form fields.
+   * 
+   * Key Technologies/APIs:
+   *     - Chrome Storage local API
+   */
   async function loadSettings() {
-    const settings = await chrome.storage.local.get([
-      'firebaseApiKey',
-      'firebaseDbUrl',
-      'deviceId',
-      'autoPaste'
-    ]);
+    const settings = await chrome.storage.local.get(['deviceId', 'autoPaste']);
 
-    if (settings.firebaseApiKey) {
-      firebaseKeyInput.value = settings.firebaseApiKey;
-    }
-    if (settings.firebaseDbUrl) {
-      firebaseDbUrlInput.value = settings.firebaseDbUrl;
-    }
     if (settings.deviceId) {
       deviceIdInput.value = settings.deviceId;
     }
@@ -77,15 +97,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // Save settings
+  /**
+   * Save settings and initiate connection.
+   * 
+   * Extended Description:
+   *     Validates the Device ID input, sends the settings to the background
+   *     service worker, and triggers a connection to Firebase with the
+   *     pre-configured credentials. Updates button state during the process.
+   */
   saveBtn.addEventListener('click', async () => {
-    const firebaseApiKey = firebaseKeyInput.value.trim();
-    const firebaseDbUrl = firebaseDbUrlInput.value.trim();
     const deviceId = deviceIdInput.value.trim();
     const autoPaste = autoPasteToggle.checked;
 
-    if (!firebaseApiKey || !firebaseDbUrl || !deviceId) {
-      alert('Please fill in all fields');
+    if (!deviceId) {
+      alert('Please enter your Device ID from the iPhone app');
       return;
     }
 
@@ -95,8 +120,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const response = await chrome.runtime.sendMessage({
         action: 'saveSettings',
-        firebaseApiKey,
-        firebaseDbUrl,
         deviceId,
         autoPaste
       });
@@ -112,13 +135,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         throw new Error('Failed to save');
       }
     } catch (err) {
-      console.error('Failed to save settings:', err);
+      console.error('[Whispr] Failed to save settings:', err);
       saveBtn.textContent = 'Error - Try Again';
       saveBtn.disabled = false;
     }
   });
 
-  // Handle auto-paste toggle
+  /**
+   * Handle auto-paste toggle changes.
+   * 
+   * Extended Description:
+   *     Sends the updated auto-paste preference to the background worker
+   *     when the user toggles the checkbox.
+   */
   autoPasteToggle.addEventListener('change', async () => {
     await chrome.runtime.sendMessage({
       action: 'setAutoPaste',
