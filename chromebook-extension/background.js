@@ -38,12 +38,42 @@ async function getSettings() {
   return result;
 }
 
-// Copy text to clipboard
+// Copy text to clipboard (must inject into page since service workers can't access clipboard)
 async function copyToClipboard(text) {
   try {
-    await navigator.clipboard.writeText(text);
-    console.log('[Whispr] Copied to clipboard:', text.substring(0, 50) + '...');
-    return true;
+    // Get the active tab to inject clipboard code
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) {
+      console.log('[Whispr] No active tab for clipboard');
+      return false;
+    }
+
+    // Inject script to copy to clipboard in the page context
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: async (textToCopy) => {
+        try {
+          await navigator.clipboard.writeText(textToCopy);
+          return { success: true };
+        } catch (err) {
+          // Fallback: use deprecated execCommand
+          const textarea = document.createElement('textarea');
+          textarea.value = textToCopy;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.select();
+          const success = document.execCommand('copy');
+          document.body.removeChild(textarea);
+          return { success };
+        }
+      },
+      args: [text]
+    });
+
+    const success = results?.[0]?.result?.success;
+    console.log('[Whispr] Clipboard copy:', success ? 'success' : 'failed');
+    return success;
   } catch (err) {
     console.error('[Whispr] Failed to copy:', err);
     return false;
