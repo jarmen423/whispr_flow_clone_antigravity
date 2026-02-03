@@ -253,8 +253,8 @@ export default function MobilePage() {
 
       setLastResult({ text: finalText, wordCount });
 
-      // Step 4: Send to Android receiver (if configured)
-      if (receiverIp) {
+      // Step 4: Send to receiver (Cloud Relay via Firebase or local network)
+      if (useCloudRelay || receiverIp) {
         await sendToReceiver(finalText, wordCount);
       }
 
