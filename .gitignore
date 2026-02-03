@@ -66,3 +66,4 @@ models/*.gguf
 agent/temp/
 temp/
 /tmp/localflow/
+.vercel

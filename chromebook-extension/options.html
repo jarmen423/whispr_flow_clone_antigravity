@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Whispr Flow - Settings</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+      color: #e4e4e7;
+    }
+
+    .container {
+      max-width: 500px;
+      margin: 0 auto;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 8px;
+    }
+
+    .header p {
+      color: #a1a1aa;
+      font-size: 0.95rem;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .card-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #f4f4f5;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .card-title::before {
+      content: '';
+      width: 4px;
+      height: 20px;
+      background: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
+      border-radius: 2px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group:last-child {
+      margin-bottom: 0;
+    }
+
+    label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: #d4d4d8;
+      margin-bottom: 8px;
+    }
+
+    label small {
+      display: block;
+      color: #71717a;
+      font-weight: 400;
+      margin-top: 4px;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 14px 16px;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      color: #f4f4f5;
+      font-size: 1rem;
+      transition: all 0.2s ease;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: #818cf8;
+      box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.2);
+    }
+
+    input::placeholder {
+      color: #52525b;
+    }
+
+    .toggle-group {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 10px;
+    }
+
+    .toggle-label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .toggle-label span {
+      font-weight: 500;
+      color: #f4f4f5;
+    }
+
+    .toggle-label small {
+      color: #71717a;
+      font-size: 0.8rem;
+    }
+
+    .toggle {
+      position: relative;
+      width: 50px;
+      height: 28px;
+    }
+
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 28px;
+      transition: 0.3s;
+    }
+
+    .toggle-slider::before {
+      position: absolute;
+      content: "";
+      height: 20px;
+      width: 20px;
+      left: 4px;
+      bottom: 4px;
+      background: white;
+      border-radius: 50%;
+      transition: 0.3s;
+    }
+
+    .toggle input:checked+.toggle-slider {
+      background: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
+    }
+
+    .toggle input:checked+.toggle-slider::before {
+      transform: translateX(22px);
+    }
+
+    .btn {
+      width: 100%;
+      padding: 14px 24px;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(99, 102, 241, 0.4);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #d4d4d8;
+      margin-top: 12px;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .status-message {
+      text-align: center;
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 16px;
+      font-size: 0.9rem;
+      display: none;
+    }
+
+    .status-message.success {
+      display: block;
+      background: rgba(16, 185, 129, 0.2);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .status-message.error {
+      display: block;
+      background: rgba(239, 68, 68, 0.2);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .help-text {
+      margin-top: 30px;
+      padding: 20px;
+      background: rgba(99, 102, 241, 0.1);
+      border-radius: 12px;
+      border: 1px solid rgba(99, 102, 241, 0.2);
+    }
+
+    .help-text h3 {
+      font-size: 0.95rem;
+      color: #a5b4fc;
+      margin-bottom: 12px;
+    }
+
+    .help-text ol {
+      color: #a1a1aa;
+      font-size: 0.875rem;
+      padding-left: 20px;
+    }
+
+    .help-text li {
+      margin-bottom: 8px;
+    }
+
+    .info-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 8px;
+      color: #34d399;
+      font-size: 0.8rem;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🎙️ Whispr Flow</h1>
+      <p>Voice to Text Chrome Extension Settings</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Setup</div>
+
+      <div class="info-badge">
+        ✓ Firebase pre-configured — just enter your Device ID
+      </div>
+
+      <div class="form-group">
+        <label>
+          Device ID
+          <small>Find this in the Whispr Flow mobile app settings</small>
+        </label>
+        <input type="text" id="deviceId" placeholder="e.g., device-abc123xyz">
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Preferences</div>
+
+      <div class="toggle-group">
+        <div class="toggle-label">
+          <span>Auto-paste transcriptions</span>
+          <small>Automatically paste text into focused input fields</small>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="autoPaste" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" id="saveBtn">
+      💾 Save & Connect
+    </button>
+
+    <button class="btn btn-secondary" id="testBtn">
+      🔗 Test Connection
+    </button>
+
+    <div class="status-message" id="statusMessage"></div>
+
+    <div class="help-text">
+      <h3>📋 Quick Setup</h3>
+      <ol>
+        <li>Install the Whispr Flow app on your iPhone</li>
+        <li>Open the app and find your Device ID in settings</li>
+        <li>Enter the Device ID above and click Save</li>
+        <li>Start using voice-to-text on any webpage!</li>
+      </ol>
+    </div>
+  </div>
+
+  <script>
+    // Get DOM elements
+    const deviceIdInput = document.getElementById('deviceId');
+    const autoPasteToggle = document.getElementById('autoPaste');
+    const saveBtn = document.getElementById('saveBtn');
+    const testBtn = document.getElementById('testBtn');
+    const statusMessage = document.getElementById('statusMessage');
+
+    // Load saved settings
+    async function loadSettings() {
+      const result = await chrome.storage.local.get(['deviceId', 'autoPaste']);
+
+      if (result.deviceId) deviceIdInput.value = result.deviceId;
+      autoPasteToggle.checked = result.autoPaste !== false;
+    }
+
+    // Show status message
+    function showStatus(message, isSuccess) {
+      statusMessage.textContent = message;
+      statusMessage.className = 'status-message ' + (isSuccess ? 'success' : 'error');
+      setTimeout(() => {
+        statusMessage.className = 'status-message';
+      }, 5000);
+    }
+
+    // Save settings
+    saveBtn.addEventListener('click', async () => {
+      const deviceId = deviceIdInput.value.trim();
+      const autoPaste = autoPasteToggle.checked;
+
+      if (!deviceId) {
+        showStatus('Please enter your Device ID from the mobile app', false);
+        return;
+      }
+
+      try {
+        await chrome.runtime.sendMessage({
+          action: 'saveSettings',
+          deviceId,
+          autoPaste
+        });
+        showStatus('Settings saved! Connected to Whispr Flow.', true);
+      } catch (err) {
+        showStatus('Failed to save settings: ' + err.message, false);
+      }
+    });
+
+    // Test connection
+    testBtn.addEventListener('click', async () => {
+      try {
+        const response = await chrome.runtime.sendMessage({ action: 'testConnection' });
+        if (response.success) {
+          showStatus('Connection successful! Listening for transcriptions...', true);
+        } else {
+          showStatus('Connection failed. Please check your Device ID.', false);
+        }
+      } catch (err) {
+        showStatus('Connection test failed: ' + err.message, false);
+      }
+    });
+
+    // Initialize
+    loadSettings();
+  </script>
+</body>
+
+</html>

@@ -12,7 +12,18 @@ import { tmpdir } from "os";
 const PROCESSING_MODE = process.env.PROCESSING_MODE || "networked-local";
 
 // Groq Cloud API Configuration (for audio transcription)
-const ZAI_API_KEY = process.env.GROQ_API_KEY || process.env.ZAI_API_KEY || "";
+import { getStoredApiKey } from "../../settings/api-key/route";
+
+function getApiKey(): string {
+  // First check environment variable
+  if (process.env.GROQ_API_KEY || process.env.ZAI_API_KEY) {
+    return process.env.GROQ_API_KEY || process.env.ZAI_API_KEY || "";
+  }
+  // Then check stored key
+  return getStoredApiKey() || "";
+}
+
+const ZAI_API_KEY = getApiKey();
 const GROQ_ASR_API_BASE_URL = process.env.GROQ_ASR_API_BASE_URL || "https://api.groq.com/openai/v1/audio/transcriptions";
 const ZAI_ASR_MODEL = process.env.GROQ_ASR_MODEL || process.env.ZAI_ASR_MODEL || "whisper-large-v3";
 

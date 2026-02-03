@@ -18,6 +18,28 @@ const nextConfig: NextConfig = {
           { key: "Access-Control-Allow-Headers", value: "Content-Type" },
         ],
       },
+      {
+        // Ensure service worker is served with correct MIME type
+        source: "/sw.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript" },
+          { key: "Service-Worker-Allowed", value: "/" },
+        ],
+      },
+      {
+        // Ensure audio worklet is served with correct MIME type
+        source: "/audio-processor.worklet.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript" },
+        ],
+      },
+      {
+        // CORS for manifest
+        source: "/manifest.json",
+        headers: [
+          { key: "Access-Control-Allow-Origin", value: "*" },
+        ],
+      },
     ];
   },
 };
