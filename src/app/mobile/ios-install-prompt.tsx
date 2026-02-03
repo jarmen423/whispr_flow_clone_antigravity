@@ -82,7 +82,7 @@ export function IOSInstallPrompt() {
             <Share className="w-4 h-4 inline mx-1" />
           </li>
           <li className="flex items-center gap-1">
-            Select &quot;Add to Home Screen"{" "}
+            Select &quot;Add to Home Screen&quot;{" "}
             <PlusSquare className="w-4 h-4 inline mx-1" />
           </li>
           <li>Tap &quot;Add&quot; in the top right</li>

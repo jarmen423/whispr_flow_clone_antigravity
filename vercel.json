@@ -1,14 +1,8 @@
 {
   "version": 2,
-  "buildCommand": "next build",
-  "devCommand": "next dev -p 3005",
-  "installCommand": "npm install",
+  "buildCommand": "bun run build",
+  "devCommand": "bun run dev -p 3005",
+  "installCommand": "bun install",
   "framework": "nextjs",
-  "outputDirectory": ".next",
-  "env": {
-    "NEXT_PUBLIC_FIREBASE_API_KEY": "@firebase_api_key",
-    "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN": "@firebase_auth_domain",
-    "NEXT_PUBLIC_FIREBASE_DATABASE_URL": "@firebase_database_url",
-    "NEXT_PUBLIC_FIREBASE_PROJECT_ID": "@firebase_project_id"
-  }
+  "outputDirectory": ".next"
 }

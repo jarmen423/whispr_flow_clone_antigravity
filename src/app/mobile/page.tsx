@@ -615,7 +615,7 @@ export default function MobilePage() {
         {/* Instructions */}
         <div className="text-center text-xs text-slate-400 space-y-1">
           <p>1. Enter your Groq API key above</p>
-          <p>2. Enable "Cloud Relay" and enter Firebase credentials</p>
+          <p>2. Enable &quot;Cloud Relay&quot; and enter Firebase credentials</p>
           <p>3. Share your Device ID with Chrome extension</p>
           <p>4. Record audio - text appears on Chromebook automatically!</p>
         </div>

@@ -569,7 +569,7 @@ export default function LocalFlowPage() {
                   </AlertTitle>
                   <AlertDescription className="text-blue-700 dark:text-blue-300 text-sm">
                     <p className="mb-2">
-                      <strong>Auto-paste mode:</strong> Results are automatically pasted into whatever application you're actively using (VS Code, Word, Slack, etc.). This requires the desktop agent to be running.
+                      <strong>Auto-paste mode:</strong> Results are automatically pasted into whatever application you&apos;re actively using (VS Code, Word, Slack, etc.). This requires the desktop agent to be running.
                     </p>
                     <p>
                       <strong>Browser mode:</strong> Results appear on this page and are copied to your clipboard. You manually paste where needed. Works without the desktop agent.
