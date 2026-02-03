@@ -1,0 +1,7 @@
+{
+  "version": 2,
+  "buildCommand": "cd mobile-pwa && bun install && bun run build",
+  "outputDirectory": "mobile-pwa/dist",
+  "framework": null,
+  "installCommand": ""
+}
