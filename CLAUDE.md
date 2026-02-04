@@ -74,9 +74,11 @@ pip install -r requirements.txt
 python localflow-agent.py
 ```
 
-Default hotkey: `Alt+L` (hold to record, release to transcribe)
+Default hotkeys:
+- **`Alt+L`** - Raw mode (hold to record, release to transcribe)
+- **`Alt+M`** - Format mode (same, but uses Cerebras LLM for outline/list formatting)
 
-**Note:** As of v1.2.0, the default hotkey changed from `Alt+V` to `Alt+L`. Letter keys work more reliably with pynput's `GlobalHotKeys` class. All Alt variants (left, right, AltGr) are supported.
+**Note:** As of v1.2.0, the default hotkey changed from `Alt+V` to `Alt+L`. Letter keys work more reliably with pynput's `GlobalHotKeys` class. All Alt variants are supported: left Alt, right Alt, AltGr.
 
 ## Architecture Overview
 
@@ -198,14 +200,46 @@ The application automatically falls back between modes based on configuration:
 
 ## Refinement Modes
 
-The system supports four text refinement modes:
+The system supports five text refinement modes:
 
 - **`developer`** (default): Corrects grammar, removes filler words, formats technical terms correctly
 - **`concise`**: Shortens and simplifies text while keeping meaning
 - **`professional`**: Transforms casual language into business-appropriate text
 - **`raw`**: Returns transcription unchanged (no LLM call)
+- **`outline`**: Format text with lists, indentation, and structure using voice commands
 
 System prompts are defined in `src/app/api/dictation/refine/route.ts`.
+
+### Outline Mode (Alt+M Format Mode)
+
+The `outline` mode uses **Cerebras GPT-OSS-120B** for fast, uncensored text formatting. This mode is activated with the **`Alt+M`** hotkey (or via `LOCALFLOW_FORMAT_HOTKEY`).
+
+**Voice Commands Supported:**
+- `"new line"` - Insert line break
+- `"new paragraph"` - Insert two line breaks
+- `"bullet"` / `"dash"` / `"point"` - Start bullet point
+- `"number"` / `"numbered list"` - Start numbered list
+- `"indent"` / `"tab"` - Indent current item
+- `"outdent"` / `"back"` - Remove indentation
+
+**Implicit Patterns Detected:**
+- `"First... Second... Third..."` → Numbered list
+- `"Also... Another... Plus..."` → Bulleted list
+- `"Under that... Sub-point..."` → Indented items
+
+**Why Cerebras for Outline Mode:**
+- ~3,000 tokens/sec (6x faster than alternatives)
+- GPT-OSS-120B for better instruction following
+- No content filtering (preserves profanity, expressive language)
+- Generous free tier (1M tokens/day)
+- OpenAI-compatible API
+
+**Configuration:**
+```bash
+CEREBRAS_API_KEY=your_key_here
+CEREBRAS_MODEL=gpt-oss-120b
+LOCALFLOW_FORMAT_HOTKEY=alt+m  # Optional
+```
 
 ## Desktop Agent Configuration
 
@@ -213,7 +247,8 @@ Set via environment variables:
 
 ```bash
 LOCALFLOW_WS_URL=http://localhost:3002    # WebSocket server URL
-LOCALFLOW_HOTKEY=alt+l                    # Global hotkey (use letter keys)
+LOCALFLOW_HOTKEY=alt+l                    # Global hotkey for raw mode (use letter keys)
+LOCALFLOW_FORMAT_HOTKEY=alt+m             # Hotkey for format/outline mode
 LOCALFLOW_MODE=developer                  # Refinement mode
 LOCALFLOW_PROCESSING=networked-local      # Processing mode
 DEBUG=1                                   # Enable debug logging
@@ -330,3 +365,33 @@ Symbol keys share physical keys (e.g., `/` and `?` are the same key), making the
 - TypeScript strict mode enabled
 - WebSocket service uses Socket.IO with Bun runtime
 - Desktop agent uses Python 3.7+ with standard libraries
+
+### Important Implementation Learnings
+
+**Hotkey Lambda Binding Issue**
+When setting up multiple hotkeys with `GlobalHotKeys`, beware of Python lambda closure binding. Original code had:
+```python
+hotkeys[combo_str] = lambda: self._on_hotkey_press(format_mode=False)  # Wrong!
+```
+This creates late binding - all lambdas reference the same variable. Solution: use default parameters:
+```python
+hotkeys[combo_str] = (lambda fm=flag: self._on_hotkey_press(format_mode=fm))  # Correct
+```
+
+**Whisper Prompting Limitations**
+Whisper's `initial_prompt` does NOT interpret voice commands like "new line" as formatting. It uses style conditioning (continuation), not command execution. For structural formatting (lists, indentation), post-processing with an LLM is required.
+
+**Cerebras API Specifics**
+- System messages have **stronger influence** than OpenAI/Groq (good for strict formatting)
+- Use `max_completion_tokens` NOT `max_tokens`
+- `temperature: 0.3` works better than 1.0 for formatting tasks
+- `reasoning_effort: "low"` reduces latency for simple formatting
+- DO NOT use `frequency_penalty`, `presence_penalty`, or `logit_bias` (400 errors)
+
+**Model Selection for Post-Processing**
+- Groq GPT-OSS 20B: ~1,000 tok/s, good for general refinement
+- Cerebras GPT-OSS 120B: ~3,000 tok/s, better instruction following, no censorship
+- For formatting that preserves profanity/expressive language, Cerebras is preferred
+
+**Free Tier Strategy**
+Splitting free tiers across providers (Groq for transcription, Cerebras for formatting) maximizes daily quota without sacrificing speed or quality.

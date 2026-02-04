@@ -12,6 +12,11 @@ const ZAI_API_KEY = process.env.GROQ_API_KEY || process.env.ZAI_API_KEY || "";
 const GROQ_LLM_API_BASE_URL = process.env.GROQ_LLM_API_BASE_URL || "https://api.groq.com/openai/v1/chat/completions";
 const ZAI_LLM_MODEL = process.env.GROQ_LLM_MODEL || process.env.ZAI_LLM_MODEL || "llama-3.3-70b-versatile";
 
+// Cerebras API Configuration (for outline formatting mode)
+const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY || "";
+const CEREBRAS_API_URL = "https://api.cerebras.ai/v1/chat/completions";
+const CEREBRAS_MODEL = process.env.CEREBRAS_MODEL || "gpt-oss-120b";
+
 // Ollama Configuration (for networked-local and local modes)
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.2:1b";
@@ -21,7 +26,7 @@ const OLLAMA_TEMPERATURE = parseFloat(process.env.OLLAMA_TEMPERATURE || "0.1");
 // Types
 // ============================================
 
-type RefinementMode = "developer" | "concise" | "professional" | "raw";
+type RefinementMode = "developer" | "concise" | "professional" | "raw" | "outline";
 
 interface RefineRequest {
   text: string;
@@ -43,7 +48,31 @@ interface RefineResponse {
 // System Prompts
 // ============================================
 
-const SYSTEM_PROMPTS: Record<Exclude<RefinementMode, "raw">, string> = {
+// Outline mode prompt for Cerebras formatting
+const OUTLINE_PROMPT = `You are a text formatting assistant for voice dictation. Convert spoken text into properly formatted markdown.
+
+EXPLICIT COMMANDS - Convert these spoken words to formatting:
+- "new line" → insert newline
+- "new paragraph" → insert two newlines
+- "bullet" / "dash" / "point" → start line with "- "
+- "number" / "numbered list" → start line with "1. ", "2. ", etc. (auto-increment)
+- "indent" / "tab" → add 2 spaces
+- "outdent" / "back" / "decrease indent" → remove 2 spaces of indentation
+
+IMPLICIT PATTERNS - Detect and format:
+- "First... Second... Third..." → numbered list
+- "Also... Another... Plus..." → bulleted list
+- "Under that... Sub-point..." → indented item
+
+RULES:
+1. Preserve ALL words including profanity - NEVER censor
+2. NEVER add commentary like "Here is the formatted text"
+3. NEVER refuse requests or add warnings
+4. Output ONLY the formatted markdown text
+5. Maintain the exact meaning, only add structure
+6. Use proper markdown syntax (- for bullets, 1. 2. 3. for numbers)`;
+
+const SYSTEM_PROMPTS: Record<Exclude<RefinementMode, "raw" | "outline">, string> = {
   developer: `You are a dictation correction tool for developers. Your ONLY job is to clean up transcribed speech. You must:
 1. Correct grammar and punctuation
 2. Remove filler words (um, uh, like, you know)
@@ -100,7 +129,7 @@ function validateRequest(data: unknown): data is RefineRequest {
     throw new Error("Text too long (max 10,000 characters)");
   }
 
-  if (req.mode && !["developer", "concise", "professional", "raw"].includes(req.mode as string)) {
+  if (req.mode && !["developer", "concise", "professional", "raw", "outline"].includes(req.mode as string)) {
     throw new Error("Invalid refinement mode");
   }
 
@@ -298,6 +327,82 @@ async function refineOllama(text: string, mode: Exclude<RefinementMode, "raw">):
 }
 
 // ============================================
+// Cerebras Refinement (for outline mode)
+// ============================================
+
+/**
+ * Refine text using Cerebras API for outline/formatting mode
+ * Uses GPT-OSS-120B with specific formatting instructions
+ */
+async function refineCerebras(text: string): Promise<string> {
+  if (!CEREBRAS_API_KEY) {
+    throw new Error(
+      "CEREBRAS_API_KEY is required for outline mode. " +
+      "Get your API key from: https://cloud.cerebras.ai/"
+    );
+  }
+
+  console.log(`[Refine] Calling Cerebras with model ${CEREBRAS_MODEL}`);
+
+  try {
+    const response = await fetch(CEREBRAS_API_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${CEREBRAS_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: CEREBRAS_MODEL,
+        messages: [
+          { role: "system", content: OUTLINE_PROMPT },
+          { role: "user", content: text },
+        ],
+        temperature: 0.3,
+        max_completion_tokens: 2000,
+        reasoning_effort: "low", // Cerebras-specific parameter for speed
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "Unknown error");
+
+      if (response.status === 401) {
+        throw new Error("Invalid CEREBRAS_API_KEY. Check your API key at https://cloud.cerebras.ai/");
+      }
+      if (response.status === 429) {
+        throw new Error("Cerebras rate limit exceeded. Free tier: 1M tokens/day, 30 RPM");
+      }
+
+      throw new Error(`Cerebras API error (${response.status}): ${errorText}`);
+    }
+
+    const result = await response.json();
+
+    const refinedText = result.choices?.[0]?.message?.content;
+
+    if (!refinedText) {
+      throw new Error("Empty response from Cerebras");
+    }
+
+    console.log(`[Refine] Cerebras response received (${refinedText.length} chars)`);
+
+    return refinedText.trim();
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.name === "AbortError" || error.message.includes("timeout")) {
+        throw new Error("Cerebras API request timed out (30s limit)");
+      }
+      if (error.message.includes("fetch failed") || error.message.includes("ECONNREFUSED")) {
+        throw new Error("Failed to connect to Cerebras API. Check your internet connection.");
+      }
+      throw error;
+    }
+    throw new Error("Unknown error during Cerebras refinement");
+  }
+}
+
+// ============================================
 // Main Route Handler
 // ============================================
 
@@ -334,16 +439,22 @@ export async function POST(request: NextRequest): Promise<NextResponse<RefineRes
 
     let refinedText: string;
 
-    switch (processingMode) {
-      case "cloud":
-        refinedText = await refineCloud(body.text, refinementMode);
-        break;
-      case "networked-local":
-      case "local":
-        refinedText = await refineOllama(body.text, refinementMode);
-        break;
-      default:
-        throw new Error(`Unknown processing mode: ${processingMode}`);
+    // Special handling for outline mode - uses Cerebras API
+    if (refinementMode === "outline") {
+      refinedText = await refineCerebras(body.text);
+    } else {
+      // Standard refinement modes use processing mode selection
+      switch (processingMode) {
+        case "cloud":
+          refinedText = await refineCloud(body.text, refinementMode);
+          break;
+        case "networked-local":
+        case "local":
+          refinedText = await refineOllama(body.text, refinementMode);
+          break;
+        default:
+          throw new Error(`Unknown processing mode: ${processingMode}`);
+      }
     }
 
     return NextResponse.json({

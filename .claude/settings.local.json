@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:www.nuance.com)",
+      "WebFetch(domain:goodsensorylearning.com)",
+      "WebFetch(domain:help.willowvoice.com)",
+      "Bash(dir:*)",
+      "WebFetch(domain:inference-docs.cerebras.ai)"
+    ]
+  }
+}

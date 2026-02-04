@@ -68,13 +68,16 @@ class Config:
     channels: int = 1  # Mono
     dtype: str = "int16"  # 16-bit PCM
 
-    # Hotkey (default: Alt+V)
+    # Hotkey (default: Alt+Z)
     hotkey: str = os.getenv("LOCALFLOW_HOTKEY", "alt+z")
+
+    # Formatting hotkey (default: Alt+M) - enables LLM post-processing
+    format_hotkey: str = os.getenv("LOCALFLOW_FORMAT_HOTKEY", "alt+m")
 
     # Processing mode
     mode: str = os.getenv(
         "LOCALFLOW_MODE", "developer"
-    )  # developer, concise, professional, raw
+    )  # developer, concise, professional, raw, outline
     processing_mode: str = os.getenv("PROCESSING_MODE", "networked-local")  # cloud, networked-local, local
 
     # Heartbeat interval (seconds)
@@ -280,8 +283,10 @@ class LocalFlowAgent:
         self.mode = CONFIG.mode
         self.processing_mode = CONFIG.processing_mode
         self.hotkey = CONFIG.hotkey
+        self.format_hotkey = CONFIG.format_hotkey
         self.running = True
         self.hotkey_pressed = False
+        self.format_mode_active = False  # True when using Alt+M formatting mode
         self.pasting_in_progress = False  # Flag to prevent keyboard listener interference
 
         # Set up Socket.IO event handlers
@@ -370,18 +375,23 @@ class LocalFlowAgent:
                     log_debug(f"Heartbeat error: {e}")
             time.sleep(CONFIG.heartbeat_interval)
 
-    def _start_recording(self):
+    def _start_recording(self, format_mode: bool = False):
         """Start audio recording"""
         if self.recorder.start():
             # Show visual feedback
             self.overlay.show()
-            
+
+            # Set format mode flag
+            self.format_mode_active = format_mode
+            if format_mode:
+                log_info("Format mode activated (Alt+M) - will use Cerebras LLM post-processing")
+
             # Notify server
             if self.connected:
                 try:
                     self.sio.emit(
                         "recording_started",
-                        {"timestamp": int(time.time() * 1000)},
+                        {"timestamp": int(time.time() * 1000), "format_mode": format_mode},
                         namespace="/agent",
                     )
                 except Exception as e:
@@ -391,8 +401,13 @@ class LocalFlowAgent:
         """Stop recording and send audio to server"""
         # Hide visual feedback
         self.overlay.hide()
-        
+
         audio_bytes = self.recorder.stop()
+
+        # Determine effective mode based on format_mode_active
+        effective_mode = "outline" if self.format_mode_active else self.mode
+        if self.format_mode_active:
+            log_info(f"Format mode active - using 'outline' mode (base mode: {self.mode})")
 
         if audio_bytes:
             # Convert to base64
@@ -406,7 +421,7 @@ class LocalFlowAgent:
                         {
                             "type": "process_audio",
                             "audio": audio_base64,
-                            "mode": self.mode,
+                            "mode": effective_mode,
                             "processingMode": self.processing_mode,
                             "timestamp": int(time.time() * 1000),
                         },
@@ -417,6 +432,9 @@ class LocalFlowAgent:
                     log_error(f"Failed to send audio: {e}")
             else:
                 log_error("Not connected to server")
+
+        # Reset format mode flag after sending
+        self.format_mode_active = False
 
     def _parse_hotkey(self, hotkey_str: str):
         """Parse hotkey string into pynput key combination - returns vk codes"""
@@ -478,28 +496,28 @@ class LocalFlowAgent:
         return None
 
     def _setup_hotkey_listener(self):
-        """Set up global hotkey listener"""
+        """Set up global hotkey listener for both normal and format hotkeys"""
         from pynput.keyboard import GlobalHotKeys, Key, KeyCode
 
-        # Parse the hotkey string
-        parts = self.hotkey.lower().replace("+", " ").split()
-
-        # Build hotkey combinations for all Alt variants
         hotkeys = {}
 
-        # For 'alt+l': create combinations for all Alt variants
+        # Register regular hotkey (e.g., Alt+L)
+        parts = self.hotkey.lower().replace("+", " ").split()
         if parts[0] == "alt" and len(parts) == 2 and len(parts[1]) == 1:
             target_char = parts[1]
-
             for alt_key in [Key.alt_l, Key.alt_r, Key.alt_gr]:
-                # Create string format for GlobalHotKeys
-                alt_names = {
-                    Key.alt_l: '<alt_l>',
-                    Key.alt_r: '<alt_r>',
-                    Key.alt_gr: '<alt_gr>'
-                }
+                alt_names = {Key.alt_l: '<alt_l>', Key.alt_r: '<alt_r>', Key.alt_gr: '<alt_gr>'}
                 combo_str = alt_names[alt_key] + '+' + target_char
-                hotkeys[combo_str] = self._on_hotkey_press
+                hotkeys[combo_str] = lambda: self._on_hotkey_press(format_mode=False)
+
+        # Register format hotkey (e.g., Alt+M)
+        format_parts = self.format_hotkey.lower().replace("+", " ").split()
+        if format_parts[0] == "alt" and len(format_parts) == 2 and len(format_parts[1]) == 1:
+            format_char = format_parts[1]
+            for alt_key in [Key.alt_l, Key.alt_r, Key.alt_gr]:
+                alt_names = {Key.alt_l: '<alt_l>', Key.alt_r: '<alt_r>', Key.alt_gr: '<alt_gr>'}
+                combo_str = alt_names[alt_key] + '+' + format_char
+                hotkeys[combo_str] = lambda: self._on_hotkey_press(format_mode=True)
 
         log_info(f"Registering hotkeys: {list(hotkeys.keys())}")
 
@@ -543,19 +561,27 @@ class LocalFlowAgent:
         # Return a mock listener object for compatibility
         return type('MockListener', (), {'stop': lambda: None})()
 
-    def _on_hotkey_press(self):
-        """Called when hotkey is pressed"""
+    def _on_hotkey_press(self, format_mode: bool = False):
+        """Called when hotkey is pressed
+
+        Args:
+            format_mode: If True, use Alt+M formatting mode with Cerebras LLM
+        """
         if not self.hotkey_pressed:
             self.hotkey_pressed = True
-            log_info("Hotkey detected! Starting recording...")
-            self._start_recording()
+            if format_mode:
+                log_info("Format hotkey (Alt+M) detected! Starting recording with LLM formatting...")
+            else:
+                log_info("Hotkey detected! Starting recording...")
+            self._start_recording(format_mode=format_mode)
 
     def run(self):
         """Main run loop"""
         log_info("=" * 60)
         log_info("LocalFlow Desktop Agent")
         log_info("=" * 60)
-        log_info(f"Hotkey: {self.hotkey}")
+        log_info(f"Hotkey (raw): {self.hotkey}")
+        log_info(f"Hotkey (format): {self.format_hotkey}")
         log_info(f"Mode: {self.mode}")
         log_info(f"Processing: {self.processing_mode}")
         log_info("=" * 60)

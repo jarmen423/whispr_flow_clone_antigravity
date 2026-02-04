@@ -29,7 +29,7 @@ interface AgentConnection {
 interface ProcessAudioMessage {
   type: "process_audio";
   audio: string;
-  mode: "developer" | "concise" | "professional" | "raw";
+  mode: "developer" | "concise" | "professional" | "raw" | "outline";
   processingMode?: "cloud" | "local";
   timestamp: number;
 }

@@ -18,8 +18,15 @@ python localflow-agent.py
 
 ### 3. Use
 
-1. Press and hold `Alt+V` (default hotkey)
-2. Speak clearly
+**Two hotkey modes are available:**
+
+| Hotkey | Mode | Description |
+|--------|------|-------------|
+| `Alt+L` | Raw | Fast transcription without post-processing |
+| `Alt+M` | Format | Transcription with Cerebras LLM formatting (lists, outlines, indentation) |
+
+1. Press and hold your chosen hotkey
+2. Speak clearly (include voice commands like "bullet", "new line" in format mode)
 3. Release the keys
 4. Text is automatically pasted at your cursor
 
@@ -27,21 +34,65 @@ python localflow-agent.py
 
 Set these environment variables:
 
-| Variable               | Default                                             | Description                                             |
-| ---------------------- | --------------------------------------------------- | ------------------------------------------------------- |
-| `LOCALFLOW_WS_URL`     | `http://localhost:3001` | WebSocket server URL                                    |
-| `LOCALFLOW_HOTKEY`     | `alt+v`                                             | Global hotkey                                           |
-| `LOCALFLOW_MODE`       | `developer`                                         | Refinement mode (developer, concise, professional, raw) |
-| `LOCALFLOW_PROCESSING` | `cloud`                                             | Processing mode (cloud, local)                          |
-| `DEBUG`                | -                                                   | Set to any value for debug logging                      |
+| Variable                  | Default                    | Description                                                                |
+| ------------------------- | -------------------------- | -------------------------------------------------------------------------- |
+| `LOCALFLOW_WS_URL`        | `http://localhost:3002`     | WebSocket server URL                                                       |
+| `LOCALFLOW_HOTKEY`        | `alt+l`                    | Global hotkey for raw mode                                                 |
+| `LOCALFLOW_FORMAT_HOTKEY` | `alt+m`                    | Hotkey for format mode (uses Cerebras LLM for outlines/lists)              |
+| `LOCALFLOW_MODE`          | `developer`                | Refinement mode (developer, concise, professional, raw, outline)           |
+| `LOCALFLOW_PROCESSING`    | `cloud`                    | Processing mode (cloud, networked-local, local)                            |
+| `DEBUG`                   | -                          | Set to any value for debug logging                                         |
+| `CEREBRAS_API_KEY`        | -                          | Required for format mode (get from https://cloud.cerebras.ai/)             |
+
+### Format Mode Voice Commands
+
+When using **Alt+M** (format mode), these voice commands are interpreted:
+
+- `"new line"` - Insert line break
+- `"bullet"` / `"dash"` - Start bullet point
+- `"number"` - Start numbered list
+- `"indent"` - Increase indentation
+- `"outdent"` - Decrease indentation
+
+**Example:** "Buy groceries bullet milk bullet eggs new line call John" becomes:
+```
+- Buy groceries
+  - Milk
+  - Eggs
+
+Call John
+```
 
 ## Hotkey Options
 
-- `alt+v` - Alt + V (default)
+**Raw Mode Hotkeys:**
+- `alt+l` - Alt + L (default for raw mode)
+- `alt+v` - Alt + V (legacy)
+
+**Format Mode Hotkeys:**
+- `alt+m` - Alt + M (default for format mode)
+- Custom: Set `LOCALFLOW_FORMAT_HOTKEY` env var
+
+**Other Options:**
 - `ctrl+shift+v` - Ctrl + Shift + V
 - `cmd+shift+v` - Cmd + Shift + V (macOS)
 
 ## Troubleshooting
+
+### Format Mode Not Working
+
+**"CEREBRAS_API_KEY not set"**
+- Get your free API key from: https://cloud.cerebras.ai/
+- Add to your `.env` file: `CEREBRAS_API_KEY=csk-...`
+
+**"Cerebras rate limit exceeded"**
+- Free tier: 1M tokens/day, 30 requests/minute
+- Wait a minute and try again, or upgrade at https://cerebras.ai/pricing
+
+**"Format mode not activating"**
+- Check agent logs for: `[INFO] Registering hotkeys:`
+- Should show both `alt+l` and `alt+m` hotkeys
+- Try pressing Alt+M firmly - both keys must be detected together
 
 ### "No audio device found"
 
