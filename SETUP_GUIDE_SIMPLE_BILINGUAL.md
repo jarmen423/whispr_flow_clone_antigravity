@@ -115,6 +115,96 @@ localflow -stop
 
 ---
 
+## 🎮 Qué Esperar y Cómo Usar / What to Expect & How to Use
+
+**Español:** Después de ejecutar `localflow`, verás esto:
+
+**English:** After running `localflow`, you'll see output like this:
+
+```
+============================================================
+LocalFlow Desktop Agent
+============================================================
+Hotkey (raw): alt+l
+Hotkey (format): alt+m
+Hotkey (translate): alt+t
+Mode: developer
+Processing: cloud
+============================================================
+Listening for hotkey: alt+l
+Translation toggle: alt+t (currently OFF)
+Press the hotkey to start recording, release to stop and transcribe.
+Press Ctrl+C to exit.
+```
+
+### Teclas de Atajo Predeterminadas / Default Hotkeys:
+
+| Tecla / Hotkey | Función / Function |
+|----------------|-------------------|
+| **Alt+L** | **Modo raw / Raw mode** - Mantén presionado para grabar, suelta para transcribir. Sin formato, máxima velocidad. / Hold to record, release to transcribe. No formatting, fastest speed. |
+| **Alt+M** | **Modo formato / Format mode** - Mantén presionado para grabar, suelta para transcribir con formato inteligente (listas, viñetas, etc.) / Hold to record, release to transcribe with smart formatting (lists, bullets, etc.) |
+| **Alt+T** | **Alternar traducción / Toggle translation** - Presiona una vez para activar/desactivar modo traducción (habla cualquier idioma → salida en inglés) / Press once to turn on/off translation mode (speak any language → English output) |
+
+### Cómo Usar / How to Use:
+
+**Español:**
+1. **Abre cualquier aplicación** (Word, Excel, Notepad, PowerShell, etc.)
+2. **Haz clic donde quieres que aparezca el texto**
+3. **Mantén presionado Alt+L** (mantén ambas teclas presionadas)
+4. **Habla** mientras mantienes las teclas presionadas
+5. **Suelta** cuando termines de hablar
+6. ¡El texto aparece automáticamente!
+
+**English:**
+1. **Open any application** (Word, Excel, Notepad, PowerShell, etc.)
+2. **Click where you want text to appear**
+3. **Hold Alt+L** (keep both keys pressed)
+4. **Speak** while holding the keys
+5. **Release** when done speaking
+6. Text automatically appears!
+
+### ¿Quieres Diferentes Teclas de Atajo? / Want Different Hotkeys?
+
+**Español:** Si quieres personalizar las teclas de atajo (ej: usar Alt+V en lugar de Alt+L):
+
+**English:** If you want to customize the hotkeys (e.g., use Alt+V instead of Alt+L):
+
+**1. Navega a tu carpeta LocalFlow / Navigate to your LocalFlow folder:**
+```powershell
+cd C:\Tu\Ruta\Real\A\LocalFlow
+```
+
+**2. Crea/edita el archivo `.env` / Create/edit the `.env` file:**
+```powershell
+# Si .env no existe, copia el ejemplo / If .env doesn't exist, copy the example:
+copy .env.example .env
+
+# Edita con Bloc de Notas / Edit with Notepad:
+notepad .env
+```
+
+**3. Agrega o modifica estas líneas / Add or modify these lines:**
+```bash
+# Personaliza tus teclas de atajo (usa letras, no símbolos) / Customize your hotkeys (use letter keys, not symbols):
+LOCALFLOW_HOTKEY=alt+v          # Cambia tecla modo raw / Change raw mode hotkey
+LOCALFLOW_FORMAT_HOTKEY=alt+f   # Cambia tecla modo formato / Change format mode hotkey
+LOCALFLOW_TRANSLATE_HOTKEY=alt+t # Cambia tecla de traducción / Change translation toggle
+```
+
+**4. Guarda y reinicia LocalFlow / Save and restart LocalFlow:**
+```powershell
+localflow -stop
+localflow
+```
+
+**Nota / Note:** Usa **teclas de letras** (a-z) para mejor confiabilidad. Las teclas de símbolos como `/`, `?`, `-` pueden ser poco confiables en Windows. / Use **letter keys** (a-z) for best reliability. Symbol keys like `/`, `?`, `-` can be unreliable on Windows.
+
+---
+
+
+
+---
+
 ## 🛠️ Instalación Manual / Manual Setup (Si la instalación automática falla / If Automated Install Fails)
 
 **Español:** Si el script automático no funciona, sigue estos pasos:

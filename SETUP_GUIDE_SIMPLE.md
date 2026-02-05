@@ -68,6 +68,81 @@ localflow -stop
 
 ---
 
+## 🎮 What to Expect & How to Use
+
+After running `localflow`, you'll see output like this:
+
+```
+============================================================
+LocalFlow Desktop Agent
+============================================================
+Hotkey (raw): alt+l
+Hotkey (format): alt+m
+Hotkey (translate): alt+t
+Mode: developer
+Processing: cloud
+============================================================
+Listening for hotkey: alt+l
+Translation toggle: alt+t (currently OFF)
+Press the hotkey to start recording, release to stop and transcribe.
+Press Ctrl+C to exit.
+```
+
+### Default Hotkeys:
+
+| Hotkey | Function |
+|--------|----------|
+| **Alt+L** | **Raw mode** - Hold to record,release to transcribe. No formatting, fastest speed. |
+| **Alt+M** | **Format mode** - Hold to record, release to transcribe with smart formatting (lists, bullets, etc.) |
+| **Alt+T** | **Toggle translation** - Press once to turn on/off translation mode (speak any language → English output) |
+
+### How to Use:
+
+1. **Open any application** (Word, Excel, Notepad, PowerShell, etc.)
+2. **Click where you want text to appear**
+3. **Hold Alt+L** (keep both keys pressed)
+4. **Speak** while holding the keys
+5. **Release** when done speaking
+6. Text automatically appears!
+
+### Want Different Hotkeys?
+
+If you want to customize the hotkeys (e.g., use Alt+V instead of Alt+L):
+
+1. Open PowerShell and navigate to your LocalFlow folder:
+```powershell
+cd C:\Your\Actual\Path\To\LocalFlow
+```
+
+2. Create/edit the `.env` file:
+```powershell
+# If .env doesn't exist, copy the example:
+copy .env.example .env
+
+# Edit with Notepad:
+notepad .env
+```
+
+3. Add or modify these lines:
+```bash
+# Customize your hotkeys (use letter keys, not symbols):
+LOCALFLOW_HOTKEY=alt+v          # Change raw mode hotkey
+LOCALFLOW_FORMAT_HOTKEY=alt+f   # Change format mode hotkey
+LOCALFLOW_TRANSLATE_HOTKEY=alt+t # Change translation toggle
+```
+
+4. Save and restart LocalFlow:
+```powershell
+localflow -stop
+localflow
+```
+
+**Note:** Use **letter keys** (a-z) for best reliability. Symbol keys like `/`, `?`, `-` can be unreliable on Windows.
+
+
+
+---
+
 ## 🛠️ Manual Setup (If Automated Install Fails)
 
 If the automated script doesn't work, follow these steps:
