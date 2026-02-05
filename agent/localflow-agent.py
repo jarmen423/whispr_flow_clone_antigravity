@@ -121,8 +121,6 @@ class Config:
             raw, outline) that determines how the LLM refines the text.
         processing_mode: Where processing occurs - "cloud", "networked-local",
             or "local" depending on infrastructure deployment.
-        translate: Whether to translate non-English audio to English using
-            Whisper's translation capability.
         heartbeat_interval: Seconds between keepalive pings to maintain
             WebSocket connection and detect network issues.
         paste_cooldown: Minimum seconds between paste operations to
@@ -147,7 +145,6 @@ class Config:
         "LOCALFLOW_MODE", "developer"
     )  # developer, concise, professional, raw, outline
     processing_mode: str = os.getenv("PROCESSING_MODE", "networked-local")  # cloud, networked-local, local
-    translate: bool = os.getenv("LOCALFLOW_TRANSLATE", "false").lower() == "true"
     heartbeat_interval: int = 5
     paste_cooldown: float = 0.1
 
@@ -704,7 +701,6 @@ class LocalFlowAgent:
         processing_mode: Where processing occurs (cloud, local, etc.).
         hotkey: Current global hotkey configuration string.
         format_hotkey: LLM formatting hotkey configuration.
-        translate_hotkey: Hotkey to toggle translation mode.
         running: Boolean indicating if agent main loop is active.
         hotkey_pressed: Boolean tracking if hotkey is currently held.
         format_mode_active: Whether format hotkey was used.
@@ -746,13 +742,13 @@ class LocalFlowAgent:
         self.connected = False
         self.mode = CONFIG.mode
         self.processing_mode = CONFIG.processing_mode
-        self.translate = CONFIG.translate
         self.hotkey = CONFIG.hotkey
         self.format_hotkey = CONFIG.format_hotkey
         self.translate_hotkey = CONFIG.translate_hotkey
         self.running = True
         self.hotkey_pressed = False
         self.format_mode_active = False  # True when using Alt+M formatting mode
+        self.translate_mode_active = False  # True when using Alt+T translation mode
         self.pasting_in_progress = False  # Flag to prevent keyboard listener interference
 
         # Set up Socket.IO event handlers
@@ -842,7 +838,7 @@ class LocalFlowAgent:
             """Handle settings update from server.
 
             Updates agent configuration based on server-sent settings
-            changes. Supports updating mode, processingMode, translate, and hotkey
+            changes. Supports updating mode, processingMode, and hotkey
             configurations dynamically without restart.
 
             Key Technologies/APIs:
@@ -853,7 +849,6 @@ class LocalFlowAgent:
                 data: Dictionary containing settings to update:
                     - mode (str): New processing mode
                     - processingMode (str): New processing location
-                    - translate (bool): Whether to translate to English
                     - hotkey (str): New hotkey configuration
             """
             if "mode" in data:
@@ -864,50 +859,9 @@ class LocalFlowAgent:
                 self.processing_mode = data["processingMode"]
                 log_info(f"Processing mode updated: {self.processing_mode}")
 
-            if "translate" in data:
-                self.translate = data["translate"]
-                log_info(f"Translate updated: {self.translate}")
-
             if "hotkey" in data:
                 self.hotkey = data["hotkey"]
                 log_info(f"Hotkey updated: {self.hotkey}")
-
-            if "translateHotkey" in data:
-                self.translate_hotkey = data["translateHotkey"]
-                log_info(f"Translate hotkey updated: {self.translate_hotkey}")
-
-    def toggle_translation(self) -> None:
-        """Toggle translation mode on/off.
-
-        Switches the translate setting between True and False,
-        shows a visual notification via the overlay, and notifies
-        the server of the change.
-        """
-        self.translate = not self.translate
-        status = "ON" if self.translate else "OFF"
-        log_info(f"Translation mode toggled: {status}")
-
-        # Show visual notification
-        self.overlay.show()
-        self.overlay.update_text(f"🌐 Translate: {status}")
-
-        # Hide overlay after 1.5 seconds
-        def hide_overlay():
-            time.sleep(1.5)
-            self.overlay.hide()
-
-        threading.Thread(target=hide_overlay, daemon=True).start()
-
-        # Notify server of the change if connected
-        if self.connected:
-            try:
-                self.sio.emit(
-                    "translation_toggled",
-                    {"translate": self.translate, "timestamp": int(time.time() * 1000)},
-                    namespace="/agent",
-                )
-            except Exception as e:
-                log_error(f"Failed to notify server of translation toggle: {e}")
 
     def connect(self) -> bool:
         """Establish WebSocket connection to the LocalFlow server.
@@ -972,24 +926,52 @@ class LocalFlowAgent:
                     log_debug(f"Heartbeat error: {e}")
             time.sleep(CONFIG.heartbeat_interval)
 
-    def _start_recording(self, format_mode: bool = False) -> None:
+    def toggle_translation(self) -> None:
+        """Toggle translation mode on/off with visual feedback.
+
+        Switches the translate_mode flag which determines whether audio
+        should be translated to English instead of just transcribed.
+        Shows a brief visual notification via the overlay.
+
+        Key Technologies/APIs:
+            - RecordingOverlay: Visual feedback for mode toggle
+            - threading.Thread: Background timer for auto-hide
+
+        Returns:
+            None
+        """
+        self.translate_mode_active = not self.translate_mode_active
+        status = "ON 🌐" if self.translate_mode_active else "OFF"
+        log_info(f"Translation mode: {status}")
+
+        # Show visual feedback via overlay
+        try:
+            self.overlay.show()
+            # Auto-hide after brief display
+            def hide_after_delay():
+                time.sleep(1.5)
+                if not self.recorder.is_recording():
+                    self.overlay.hide()
+            threading.Thread(target=hide_after_delay, daemon=True).start()
+        except Exception as e:
+            log_debug(f"Overlay notification failed: {e}")
+
+    def _start_recording(self, format_mode: bool = False, translate_mode: bool = False) -> None:
         """Initiate audio recording session.
 
         Starts the AudioRecorder, displays the visual overlay, and
-        notifies the server that recording has begun. Sets the format
-        mode flag which determines if LLM post-processing should be
-        applied to the transcription.
+        notifies the server that recording has begun. Sets the mode
+        flags (format/translate) which determine how the server
+        processes the transcription.
 
         Key Technologies/APIs:
-            - AudioRecorder.start: Begin audio capture
-            - RecordingOverlay.show: Display visual feedback
-            - socketio.Client.emit: Notify server of recording start
-            - time.time: Millisecond timestamp generation
+            - AudioRecorder.start: Sounddevice stream initialization
+            - RecordingOverlay.show: GUI feedback activation
+            - socketio.Client.emit: Server notification
 
         Args:
-            format_mode: If True, enables LLM post-processing mode
-                (outline mode) for structured formatting of the
-                transcribed text. Defaults to False.
+            format_mode: If True, uses LLM formatting/outline mode.
+            translate_mode: If True, uses translation mode.
 
         Returns:
             None
@@ -998,17 +980,33 @@ class LocalFlowAgent:
             # Show visual feedback
             self.overlay.show()
 
-            # Set format mode flag
+            # Log mode for debugging (overlay already shows visual animation)
+            if translate_mode:
+                log_info("🌐 Translation mode recording started")
+            elif format_mode:
+                log_info("📝 Format mode recording started")
+            else:
+                log_info("Recording started")
+
+            # Set mode flags
             self.format_mode_active = format_mode
+            self.translate_mode_active = translate_mode
+
             if format_mode:
-                log_info("Format mode activated (Alt+M) - will use Cerebras LLM post-processing")
+                log_info("Format mode activated (Alt+M)")
+            if translate_mode:
+                log_info("Translation mode activated (Alt+T)")
 
             # Notify server
             if self.connected:
                 try:
                     self.sio.emit(
                         "recording_started",
-                        {"timestamp": int(time.time() * 1000), "format_mode": format_mode},
+                        {
+                            "timestamp": int(time.time() * 1000), 
+                            "format_mode": format_mode,
+                            "translate_mode": translate_mode
+                        },
                         namespace="/agent",
                     )
                 except Exception as e:
@@ -1020,27 +1018,16 @@ class LocalFlowAgent:
         Halts the audio recorder, hides the visual overlay, encodes
         the captured audio as base64, and sends it to the server via
         the process_audio event. Determines the effective processing
-        mode based on whether format mode was active.
-
-        Key Technologies/APIs:
-            - RecordingOverlay.hide: Remove visual feedback
-            - AudioRecorder.stop: Stop capture and get WAV bytes
-            - base64.b64encode: Encode binary audio for JSON transport
-            - socketio.Client.emit: Send audio to server with metadata
-
-        Returns:
-            None
+        mode and translation settings.
         """
         # Hide visual feedback
         self.overlay.hide()
 
         audio_bytes = self.recorder.stop()
 
-        # Determine effective mode based on format_mode_active
+        # Determine effective mode
         effective_mode = "outline" if self.format_mode_active else self.mode
-        if self.format_mode_active:
-            log_info(f"Format mode active - using 'outline' mode (base mode: {self.mode})")
-
+        
         if audio_bytes:
             # Convert to base64
             audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
@@ -1055,19 +1042,20 @@ class LocalFlowAgent:
                             "audio": audio_base64,
                             "mode": effective_mode,
                             "processingMode": self.processing_mode,
-                            "translate": self.translate,
+                            "translate": self.translate_mode_active,
                             "timestamp": int(time.time() * 1000),
                         },
                         namespace="/agent",
                     )
-                    log_info("Audio sent for processing")
+                    log_info(f"Audio sent ({'Translate' if self.translate_mode_active else 'Normal'})")
                 except Exception as e:
                     log_error(f"Failed to send audio: {e}")
             else:
                 log_error("Not connected to server")
 
-        # Reset format mode flag after sending
+        # Reset flags
         self.format_mode_active = False
+        self.translate_mode_active = False
 
     def _parse_hotkey(self, hotkey_str: str) -> set:
         """Parse a hotkey string into virtual key codes.
@@ -1179,198 +1167,118 @@ class LocalFlowAgent:
         return None
 
     def _setup_hotkey_listener(self):
-        """Configure global hotkey listeners for recording triggers with event suppression.
+        """Configure global hotkey listeners for recording triggers.
 
-        Sets up a single keyboard listener that detects hotkey combinations and
-        suppresses the key events to prevent them from reaching applications.
-        This is crucial for terminal applications like PowerShell where unhandled
-        key events can cause unwanted character input (e.g., repeated 'm' or 'l').
-
-        The listener uses manual key state tracking to detect when both the Alt
-        key and the hotkey letter are pressed simultaneously. When the hotkey is
-        detected, recording starts. When either key is released, recording stops.
-        Key events are suppressed during this window to prevent leakage.
+        Sets up two keyboard listeners: a GlobalHotKeys instance for
+        detecting hotkey presses (which triggers recording start), and
+        a regular Listener for tracking key releases (which triggers
+        recording stop). This push-to-talk behavior requires holding
+        the hotkey combination for the duration of recording.
 
         Key Technologies/APIs:
+            - pynput.keyboard.GlobalHotKeys: Global hotkey registration
+              with automatic callback invocation
             - pynput.keyboard.Listener: Low-level key event monitoring
-            - pynput.keyboard.Key: Special key constants for modifier detection
-            - Callback return values: Returning False suppresses the event
-            - Manual key state tracking: Reliable hotkey detection across platforms
+            - pynput.keyboard.Key: Special key constants for modifier
+              detection and release tracking
+            - lambda closures: Hotkey callback binding with format_mode
 
         Returns:
-            Listener: A listener object with a stop() method for cleanup.
+            object: A mock listener object with a stop() method for
+                compatibility with the cleanup code in run().
 
         Note:
             This method must be called from the main thread as keyboard
             listeners have thread-safety requirements on some platforms.
         """
-        from pynput.keyboard import Key, KeyCode
+        from pynput.keyboard import GlobalHotKeys, Key, KeyCode
 
-        # Parse hotkey configurations
+        hotkeys = {}
+
+        # Store hotkey chars locally for release detection
         parts = self.hotkey.lower().replace("+", " ").split()
         format_parts = self.format_hotkey.lower().replace("+", " ").split()
         translate_parts = self.translate_hotkey.lower().replace("+", " ").split()
+        
+        hotkey_char = parts[1] if len(parts) >= 2 else "l"
+        format_char = format_parts[1] if len(format_parts) >= 2 else "m"
+        translate_char = translate_parts[1] if len(translate_parts) >= 2 else "t"
 
-        # Store target characters for release detection
-        self._hotkey_char = parts[1] if len(parts) >= 2 else "l"
-        self._format_hotkey_char = format_parts[1] if len(format_parts) >= 2 else "m"
-        self._translate_hotkey_char = translate_parts[1] if len(translate_parts) >= 2 else "t"
+        # Register Regular Recording Hotkey
+        if parts[0] == "alt":
+            for alt_key in [Key.alt_l, Key.alt_r, Key.alt_gr]:
+                alt_names = {Key.alt_l: "<alt_l>", Key.alt_r: "<alt_r>", Key.alt_gr: "<alt_gr>"}
+                combo_str = alt_names[alt_key] + "+" + hotkey_char
+                hotkeys[combo_str] = lambda: self._on_hotkey_press(format_mode=False, translate_mode=False)
 
-        # Track currently pressed keys
+        # Register Format Recording Hotkey
+        if format_parts[0] == "alt":
+            for alt_key in [Key.alt_l, Key.alt_r, Key.alt_gr]:
+                alt_names = {Key.alt_l: "<alt_l>", Key.alt_r: "<alt_r>", Key.alt_gr: "<alt_gr>"}
+                combo_str = alt_names[alt_key] + "+" + format_char
+                hotkeys[combo_str] = lambda: self._on_hotkey_press(format_mode=True, translate_mode=False)
+
+        # Register Translate Recording Hotkey
+        if translate_parts[0] == "alt":
+            for alt_key in [Key.alt_l, Key.alt_r, Key.alt_gr]:
+                alt_names = {Key.alt_l: "<alt_l>", Key.alt_r: "<alt_r>", Key.alt_gr: "<alt_gr>"}
+                combo_str = alt_names[alt_key] + "+" + translate_char
+                hotkeys[combo_str] = lambda: self._on_hotkey_press(format_mode=False, translate_mode=True)
+
+        log_info(f"Registering recording hotkeys: {list(hotkeys.keys())}")
+
+        # Create GlobalHotKeys instance
+        self.hotkey_listener = GlobalHotKeys(hotkeys)
+
+        # Track pressed keys for release detection
         self.pressed_keys = set()
-        self._hotkey_triggered = False
-        self._last_hotkey_was_format = False
-
-        # Define Alt keys for detection
-        ALT_KEYS = {Key.alt_l, Key.alt_r, Key.alt_gr, Key.alt}
-
-        def is_alt_pressed():
-            """Check if any Alt key is currently pressed."""
-            return bool(self.pressed_keys & ALT_KEYS)
-
-        def is_hotkey_char_pressed(target_char):
-            """Check if the target hotkey character is pressed."""
-            target_lower = target_char.lower()
-            for key in self.pressed_keys:
-                if hasattr(key, "char") and key.char and key.char.lower() == target_lower:
-                    return True
-                # Also check by vk code for letter keys
-                if hasattr(key, "vk") and key.vk is not None:
-                    try:
-                        char_from_vk = chr(key.vk).lower()
-                        if char_from_vk == target_lower:
-                            return True
-                    except (ValueError, OverflowError):
-                        pass
-            return False
 
         def on_press(key):
-            """Handle key press events.
-
-            Suppresses events when:
-            1. Pasting is in progress
-            2. Hotkey combination is active (Alt + hotkey_char)
-
-            Returns False to suppress the event, True/None to allow it.
-            """
             if self.pasting_in_progress:
-                return False  # Suppress during paste
-
+                return
             self.pressed_keys.add(key)
-            log_debug(f"PRESS: {key}, pressed: {len(self.pressed_keys)} keys")
-
-            # Check for hotkey activation (Alt + letter)
-            if is_alt_pressed() and not self._hotkey_triggered:
-                if is_hotkey_char_pressed(self._hotkey_char):
-                    self._hotkey_triggered = True
-                    self._last_hotkey_was_format = False
-                    self._on_hotkey_press(format_mode=False)
-                    return False  # Suppress the hotkey event
-                elif is_hotkey_char_pressed(self._format_hotkey_char):
-                    self._hotkey_triggered = True
-                    self._last_hotkey_was_format = True
-                    self._on_hotkey_press(format_mode=True)
-                    return False  # Suppress the hotkey event
-                elif is_hotkey_char_pressed(self._translate_hotkey_char):
-                    # Toggle translation mode (don't set _hotkey_triggered, this is a toggle not a hold)
-                    self.toggle_translation()
-                    return False  # Suppress the hotkey event
-
-            # Suppress Alt+hotkey_char combinations even if already triggered
-            if is_alt_pressed():
-                if is_hotkey_char_pressed(self._hotkey_char) or is_hotkey_char_pressed(self._format_hotkey_char):
-                    return False
-
-            # Allow all other keys
-            return True
 
         def on_release(key):
-            """Handle key release events.
-
-            Stops recording when the hotkey is released. Suppresses
-            release events for hotkey-related keys during recording.
-            """
             if self.pasting_in_progress:
-                self.pressed_keys.discard(key)
-                return False  # Suppress during paste
-
+                return
             self.pressed_keys.discard(key)
-            log_debug(f"RELEASE: {key}, pressed: {len(self.pressed_keys)} keys")
 
-            # Stop recording if hotkey was triggered and we're recording
-            if self._hotkey_triggered and self.recorder.is_recording():
-                # Check if this is a hotkey-related key being released
-                is_alt_key = key in ALT_KEYS
-                is_hotkey_char = False
-
+            # Stop recording if ANY of the relevant hotkey parts are released
+            if self.hotkey_pressed and self.recorder.is_recording():
+                is_alt = key in [Key.alt_l, Key.alt_r, Key.alt_gr, Key.alt]
+                
+                is_char = False
                 if hasattr(key, "char") and key.char:
-                    key_char_lower = key.char.lower()
-                    is_hotkey_char = (key_char_lower == self._hotkey_char or
-                                     key_char_lower == self._format_hotkey_char)
+                    k = key.char.lower()
+                    is_char = k in [hotkey_char, format_char, translate_char]
+                
+                # Double check VK codes for letters
+                vk = self._get_vk(key)
+                if vk:
+                    vks = [ord(c.upper()) for c in [hotkey_char, format_char, translate_char]]
+                    if vk in vks:
+                        is_char = True
 
-                # Also check vk code for letter keys
-                if hasattr(key, "vk") and key.vk is not None:
-                    try:
-                        char_from_vk = chr(key.vk).lower()
-                        if char_from_vk in (self._hotkey_char, self._format_hotkey_char):
-                            is_hotkey_char = True
-                    except (ValueError, OverflowError):
-                        pass
-
-                if is_alt_key or is_hotkey_char:
-                    log_info("Hotkey released! Stopping recording...")
-                    self._hotkey_triggered = False
+                if is_alt or is_char:
                     self.hotkey_pressed = False
+                    log_info("Hotkey released! Stopping recording...")
                     self._stop_recording()
-                    return False  # Suppress the release event
 
-            # If hotkey was triggered but no longer recording, reset state
-            if self._hotkey_triggered and not self.recorder.is_recording():
-                self._hotkey_triggered = False
-
-            # Allow all other keys
-            return True
-
-        log_info(f"Registering hotkeys with suppression: {self.hotkey}, {self.format_hotkey}")
-
-        # Create a single listener
-        # Note: suppress parameter doesn't work consistently across platforms,
-        # so we handle suppression manually in callbacks by returning False
-        self.hotkey_listener = keyboard.Listener(
-            on_press=on_press,
-            on_release=on_release
-        )
+        # Start listeners
+        self.release_listener = keyboard.Listener(on_press=on_press, on_release=on_release)
+        self.release_listener.start()
         self.hotkey_listener.start()
 
-        return self.hotkey_listener
+        return type("MockListener", (), {"stop": lambda: None})()
 
-    def _on_hotkey_press(self, format_mode: bool = False) -> None:
+    def _on_hotkey_press(self, format_mode: bool = False, translate_mode: bool = False) -> None:
         """Handle global hotkey press events.
-
-        Callback invoked when a registered global hotkey is pressed.
-        Sets the hotkey_pressed flag and initiates recording with
-        the appropriate mode (normal or format mode with LLM processing).
-
-        Key Technologies/APIs:
-            - AudioRecorder.start: Begin audio capture
-            - RecordingOverlay.show: Visual feedback activation
-            - socketio.Client.emit: Server notification of recording start
-
-        Args:
-            format_mode: If True, recording will use LLM formatting
-                mode for structured output. If False, uses standard
-                processing mode. Defaults to False.
-
-        Returns:
-            None
+        
+        Initiates recording with the appropriate mode flags.
         """
         if not self.hotkey_pressed:
             self.hotkey_pressed = True
-            if format_mode:
-                log_info("Format hotkey (Alt+M) detected! Starting recording with LLM formatting...")
-            else:
-                log_info("Hotkey detected! Starting recording...")
-            self._start_recording(format_mode=format_mode)
+            self._start_recording(format_mode=format_mode, translate_mode=translate_mode)
 
     def run(self) -> None:
         """Execute the main agent event loop.
@@ -1411,6 +1319,7 @@ class LocalFlowAgent:
         log_info("=" * 60)
         log_info(f"Hotkey (raw): {self.hotkey}")
         log_info(f"Hotkey (format): {self.format_hotkey}")
+        log_info(f"Hotkey (translate): {self.translate_hotkey}")
         log_info(f"Mode: {self.mode}")
         log_info(f"Processing: {self.processing_mode}")
         log_info("=" * 60)
@@ -1426,8 +1335,7 @@ class LocalFlowAgent:
         # Set up hotkey listener
         listener = self._setup_hotkey_listener()
         log_info(f"Listening for hotkey: {self.hotkey}")
-        log_info(f"Format hotkey: {self.format_hotkey}")
-        log_info(f"Translate toggle: {self.translate_hotkey}")
+        log_info(f"Translation toggle: {self.translate_hotkey} (currently {'ON' if self.translate_mode_active else 'OFF'})")
         log_info("Press the hotkey to start recording, release to stop and transcribe.")
         log_info("Press Ctrl+C to exit.")
 
