@@ -68,6 +68,23 @@ localflow -stop
 
 ---
 
+## 🔑 Step 2: Configure API Keys
+
+The installer above will **automatically prompt you for API keys!**
+
+If you skipped them during install, or need to update them later:
+```powershell
+cd C:\Your\Actual\Path\To\LocalFlow
+.\scripts\setup-api-keys.ps1
+```
+
+### What Keys You'll Need:
+
+| Key | Purpose | Required? | Get It Free |
+|-----|---------|-----------|-------------|
+| **Groq** | Speech-to-text | ✅ Yes | [console.groq.com/keys](https://console.groq.com/keys) |
+| **Cerebras** | Smart formatting (Alt+M) | ⭕ Optional | [cloud.cerebras.ai](https://cloud.cerebras.ai/) |
+
 ## 🎮 What to Expect & How to Use
 
 After running `localflow`, you'll see output like this:
